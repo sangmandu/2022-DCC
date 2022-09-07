@@ -12,6 +12,7 @@
 |기간|대회명|선정자|
 |:---:|:------------:|:---:|
 |~0924|[타이타닉 생존 예측 경진대회](https://dacon.io/competitions/open/235539/overview/description)|박종원|
+|~0918|[월간 데이콘소설 작가 분류 AI 경진대회](https://dacon.io/competitions/official/235670/overview/description)|박민영|
 
 ### 규칙
 > 스터디
