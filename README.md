@@ -13,6 +13,7 @@
 |:---:|:------------:|:---:|
 |0828~0918|[타이타닉 생존 예측 경진대회](https://dacon.io/competitions/open/235539/overview/description)|박종원|
 |0904~0925|[월간 데이콘소설 작가 분류 AI 경진대회](https://dacon.io/competitions/official/235670/overview/description)|박민영|
+|0918~1002|[영화 관객수 예측 경진대회](https://dacon.io/competitions/open/235536/overview/description)|이태훈|
 
 ### 규칙
 > 스터디
