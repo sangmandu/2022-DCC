@@ -1,4 +1,5 @@
-## [영화 관객수 예측 경진대회]([https://dacon.io/competitions/official/235670/overview/description](https://dacon.io/competitions/open/235536/overview/description))
+## [영화 관객수 예측 경진대회](https://dacon.io/competitions/open/235536/overview/description)
+
 ![image](https://user-images.githubusercontent.com/45033215/192270581-4e1368eb-b433-4dc4-aaf3-2dbf3764953f.png)
 
 ## 리더보드 기록
