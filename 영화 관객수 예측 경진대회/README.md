@@ -1,14 +1,14 @@
 ## [영화 관객수 예측 경진대회](https://dacon.io/competitions/open/235536/overview/description)
 
-![image](https://user-images.githubusercontent.com/45033215/192270581-4e1368eb-b433-4dc4-aaf3-2dbf3764953f.png)
+![image](https://user-images.githubusercontent.com/45033215/193450539-ca4c9256-d66d-4bc5-b8f3-cecebdb4d329.png)
 
 ## 리더보드 기록
 ### 첫째 주
 |이름|적용방법|점수|순위(optional)|
 |:---:|:---------------:|:---:|:---:|
-|박종원||||
+|박종원|베이스라인+ 배급사 추가.csv|1373858.6855141183|502|
 |박민영||||
-|이태훈||||
+|이태훈|베이스라인 + Randomforest|1397025|552|
 |전상민|5 model ensemble|1301509.92048||
 |조소연||||
 
