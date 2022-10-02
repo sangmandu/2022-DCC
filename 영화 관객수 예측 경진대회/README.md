@@ -1,6 +1,6 @@
 ## [영화 관객수 예측 경진대회](https://dacon.io/competitions/open/235536/overview/description)
 
-![image](https://user-images.githubusercontent.com/45033215/192270581-4e1368eb-b433-4dc4-aaf3-2dbf3764953f.png)
+![image](https://user-images.githubusercontent.com/45033215/193450539-ca4c9256-d66d-4bc5-b8f3-cecebdb4d329.png)
 
 ## 리더보드 기록
 ### 첫째 주
