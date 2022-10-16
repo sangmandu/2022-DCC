@@ -1,12 +1,13 @@
 
-from models import *
 from dataset import *
+from models import BasicCNN
 from utils import *
 
 from easydict import EasyDict
 from importlib import import_module
 
 import click
+
 
 
 @click.command()
@@ -20,12 +21,13 @@ import click
 # Optional features.
 @click.option('--resize',       help='How much to resize',              metavar='INT',      type=click.IntRange(min=1),         default=64)
 @click.option('--batch_size',   help='Total batch size',                metavar='INT',      type=click.IntRange(min=1),         default=256)
-@click.option('--epochs',       help='Epochs',                          metavar='INT',      type=click.IntRange(min=1),         default=15)
+@click.option('--epochs',       help='Epochs',                          metavar='INT',      type=click.IntRange(min=1),         default=30)
 @click.option('--fold',         help='Whether to apply cross fold',     metavar='BOOL',     type=bool,                          default=False)
 @click.option('--cutmix',       help='Cutmix probability',              metavar='FLOAT',    type=click.FloatRange(min=0),       default=0)
 @click.option('--val_ratio',    help='Proportion of valid dataset',     metavar='FLOAT',    type=click.FloatRange(min=0.1),     default=0.15)
 @click.option('--test_ratio',   help='Proportion of test dataset',      metavar='FLOAT',    type=click.FloatRange(min=0.1),     default=0.15)
 @click.option('--checkpoint',   help='checkpoint path',                 metavar='DIR',      type=str,                           default='')
+@click.option('--num_classes',  help='num_classes',                     metavar='INT',      type=click.IntRange(min=1),         default=20)
 
 # Misc settings.
 @click.option('--save_name',    help='Name of saved model',             metavar='STR',      type=str,                           default='experiment',   show_default=True)
@@ -35,16 +37,15 @@ import click
 def main(**kwargs):
     ## 인자 입력받기 ##
     opts = EasyDict(kwargs)
-
+    
     ## 난수 고정 ##
     set_seed(opts.seed)
 
     ## K-fold ##
     ''' utils.py에 추후 개발 필요'''
-
     ## 데이터 ##
-    dataset = read_dataset(data_path=opts.data, record_path=opts.record, epochs=opts.epochs, batch_size=opts.batch_size, resize=opts.resize)
-    train_dataset, valid_dataset, test_dataset = split_dataset(dataset, opts.val_ratio, opts.test_ratio, shuffle=False)
+    # dataset = read_dataset(data_path=opts.data, record_path=opts.record, epochs=opts.epochs, batch_size=opts.batch_size, resize=opts.resize)
+    # train_dataset, valid_dataset, test_dataset = split_dataset(dataset, opts.val_ratio, opts.test_ratio, shuffle=False)
     '''
     민영님!@
     기존에 tfrecord파일을 이미지 당 하나씩 개별적으로 저장하셨는데, 효율성을 좀 더 챙겨보고자
@@ -67,44 +68,21 @@ def main(**kwargs):
 
     ## 스케쥴러 ##
     ''' scheduler.py에 추후 개발 필요'''
-
+##----------------------------------------------------------------------------
+    ## 데이터 불러오기 ## 
+    BasicCNN.make_npy(opts.resize, opts.resize, groups_folder_path = './data')## npy 파일 만드는 부분(1번만 해도 됨)
+    x_train, x_test, y_train, y_test = np.load('./img_data.npy', allow_pickle=True)## npy 파일 읽는 부분
     ## 모델 ##
-    '''
-    종원님!@
-    지금 dataset을 완벽하게 세팅을 못해서 바로 학습하기는 어렵습니다..!
-    
-    모델은 종원님이 올려주신 모델 그대로 사용했고 models/BasicCNN.py에 구현해두었습니다.
-    subclass 방식으로 모델을 구성해두었어요...! 지금껏 구현하신 방식이랑 좀 다르긴 할텐데 어렵진 않을거에요!
-    
-    앞으로 점점 생길 모델 클래스들은 한 파일에 담겨있으면 너무 지저분해질 것 같아서 models 폴더안에 여러 py 파일로 구성하도록 했어요
-    현재는 실사 구분하는 encoder파일이랑 종원님 모델 구조 담긴 basiccnn파일로 있습니다.
-    
-    model = getattr(import_module(opts.model), "Model")(input_shape)
-    아래쪽에 있는 이 코드는, 인자로 학습할 모델이 담겨있는 py파일 이름을 인자로 받고,
-    그 후에 Model이라는 클래스를 가져온다는 뜻이니까.. 나중에 다른 모델 넣으실 때도
-    클래스명은 Model로 하시기를 추천드립니다..!
-    
-    걸리는 부분은 model.build랑 summary를 잘 구현해 놓았는지 모르겠네요 ㅠㅠ
-    그리고 utils.py에 있는 get_score 함수가지고 뒤쪽 성능만 얻으면 될 것 같아요!!
-    
-    여기 classifiy.py에서는 가능하면 함수로만 실행될 수 있도록 구현했습니다!
-    추가적으로 필요한 코드 있으면 자유롭게 구현하시면 될 것 같아요. 
-    궁금하신 점 있으면 알려주세요!!
-    '''
-    input_shape=(opts.resize, opts.resize, 3)
-    model = getattr(import_module(opts.model), "Model")(input_shape)
-    model.build(input_shape=input_shape)  # (1, feature)
-    model.summary()
-
+    model = BasicCNN.make_model(image_w = opts.resize, image_h = opts.resize)
     ## 컴파일 및 학습 ##
-    model.compile(loss='sparse_categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
-    model.fit(train_dataset, epochs=20, verbose=1, validation_split=0.2, shuffle=True, batch_size=4)
-    save_model(model, opts.outdir, opts.save_name)
+    model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+    BasicCNN.fit_model(model,x_train, x_test, y_train, y_test,batch_size = opts.batch_size,epochs= opts.epochs,num_classes = opts.num_classes,model_name="BasicCNN")
 
     ## 성능 ##
     '''utils.py에 개발 필요'''
-    get_score()
-
+    model = BasicCNN.load_BasicCNN()
+    BasicCNN.get_f1_score(model,x_test,y_test)
+#------------------------------------------------------------------------------
     ## 시각화
     ''' dataset.py의 show_batch 함수로 간단히 구현되어있음'''
     ''' 필요에 따라 추가 구현'''
