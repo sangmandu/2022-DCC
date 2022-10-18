@@ -189,6 +189,11 @@ def train(df, model, criterion, optimizer, scheduler, opts):
 
     model_save_path = os.path.join(opts.outdir, opts.model_name, opts.save_name)
 
+    name_index = 1
+    while len(glob(model_save_path)) > 0:
+        model_save_path += str(name_index)
+        name_index += 1
+
     for epoch in range(opts.epochs):
         model.train()
 
