@@ -28,7 +28,7 @@ warnings.filterwarnings(action='ignore')
 
 # Required.
 @click.option('--outdir',       help='Where to save the results',           metavar='DIR',      type=str,           required=True)
-@click.option('--datadir',      help='Data path',                            metavar='DIR',      type=str,           required=True)
+@click.option('--datadir',      help='Data path',                           metavar='DIR',      type=str,           required=True)
 @click.option('--model_name',   help='Model name to train',                 metavar='STR',      type=str,           required=True)
 
 # Optional features.
@@ -251,7 +251,7 @@ def train(df, model, criterion, optimizer, scheduler, opts):
             valid_batch_accuracy = []
             valid_batch_f1 = []
 
-            figure = None
+            # figure = None
             valid_pbar = tqdm(valid_loader, total=len(valid_loader))
             for (names, inputs, labels) in valid_pbar:
                 inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
