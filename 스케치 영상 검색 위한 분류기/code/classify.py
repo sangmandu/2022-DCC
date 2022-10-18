@@ -28,7 +28,7 @@ warnings.filterwarnings(action='ignore')
 
 # Required.
 @click.option('--outdir',       help='Where to save the results',           metavar='DIR',      type=str,           required=True)
-@click.option('--datadir',     help='Data path',                            metavar='DIR',      type=str,           required=True)
+@click.option('--datadir',      help='Data path',                            metavar='DIR',      type=str,           required=True)
 @click.option('--model_name',   help='Model name to train',                 metavar='STR',      type=str,           required=True)
 
 # Optional features.
@@ -61,16 +61,13 @@ def main(**kwargs):
     ## Arguments
     opts = EasyDict(kwargs)
     print(opts)
-    
-    if not os.path.exists(opts.outdir):
-        os.makedirs(opts.outdir)
-    
+
     ## Random Seed
     set_seed(opts.seed)
 
     ## Data
     df = load_data(opts.datadir, opts.dup_sim, opts.sampling)
-    
+
     ## Loss Function
     if opts.criterion == 'weight_cross_entropy':
         criterion = create_criterion(
@@ -96,11 +93,11 @@ def main(**kwargs):
         ).to(DEVICE)
     else:
         raise Exception("model name is incorrect")
-    
+
     if opts.checkpoint:
         model.load_state_dict(torch.load(opts.checkpoint))
 
-    
+
     ## Optimizer
     opt_module = getattr(import_module("torch.optim"), opts.optimizer)  # default: Adam
     optimizer = opt_module(
@@ -178,21 +175,27 @@ def train(df, model, criterion, optimizer, scheduler, opts):
         pin_memory=True,
         # drop_last=True,
     )
-    
+
 
     best_train_acc = best_valid_acc = 0
     best_train_loss = best_valid_loss = np.inf
     best_train_f1 = best_valid_f1 = 0
-    
-    model_save_path = os.path.join(opts.outdir, opts.model_name, opts.save_name) 
-    
+
+    if not os.path.exists(opts.outdir):
+        os.makedirs(opts.outdir)
+
+    if not os.path.exists(os.path.join(opts.outdir, opts.model_name)):
+        os.makedirs(os.path.join(opts.outdir, opts.model_name))
+
+    model_save_path = os.path.join(opts.outdir, opts.model_name, opts.save_name)
+
     for epoch in range(opts.epochs):
         model.train()
-        
+
         train_batch_loss = []
         train_batch_accuracy = []
         train_batch_f1 = []
-        
+
         train_pbar = tqdm(train_loader, total=len(train_loader))
         for idx, (names, inputs, labels) in enumerate(train_pbar):
             inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
@@ -206,12 +209,12 @@ def train(df, model, criterion, optimizer, scheduler, opts):
                 loss = criterion(outs, labels)
 
             preds = torch.argmax(outs, dim=-1)
-            
+
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
             scheduler.step()
-            
+
             train_batch_loss.append(
                 loss.item()
             )
@@ -227,7 +230,7 @@ def train(df, model, criterion, optimizer, scheduler, opts):
                 f'Epoch #{epoch:2.0f} | '
                 f'train | f1 : {train_batch_f1[-1]:.5f} | accuracy : {train_batch_accuracy[-1]:.5f} | '
                 f'loss : {train_batch_loss[-1]:.5f} | lr : {get_lr(optimizer):.7f}'
-            )          
+            )
 
         train_item = (sum(train_batch_loss) / len(train_loader),
                       sum(train_batch_accuracy) / len(train_loader),
@@ -235,14 +238,14 @@ def train(df, model, criterion, optimizer, scheduler, opts):
         best_train_loss = min(best_train_loss, train_item[0])
         best_train_acc = max(best_train_acc, train_item[1])
         best_train_f1 = max(best_train_f1, train_item[2])
-        
+
         with torch.no_grad():
             model.eval()
-            
+
             valid_batch_loss = []
             valid_batch_accuracy = []
             valid_batch_f1 = []
-            
+
             figure = None
             valid_pbar = tqdm(valid_loader, total=len(valid_loader))
             for (names, inputs, labels) in valid_pbar:
@@ -266,7 +269,7 @@ def train(df, model, criterion, optimizer, scheduler, opts):
                     f'valid | f1 : {valid_batch_f1[-1]:.5f} | accuracy : {valid_batch_accuracy[-1]:.5f} | '
                     f'loss : {valid_batch_loss[-1]:.5f} | lr : {get_lr(optimizer):.7f}'
                 )
-                
+
                 # 시각화를 위해 나중에 개발
                 # if figure is None:
                 #     inputs_np = torch.clone(inputs).detach().cpu().permute(0, 2, 3, 1).numpy()
@@ -282,13 +285,13 @@ def train(df, model, criterion, optimizer, scheduler, opts):
             best_valid_acc = max(best_valid_acc, valid_item[1])
             best_valid_f1 = max(best_valid_f1, valid_item[2])
             cur_f1 = valid_item[2]
-            
+
             if cur_f1 >= best_valid_f1:
                 if cur_f1 == best_valid_f1:
                     print(f"New best model for valid f1 : {cur_f1:.5%}! saving the best model..")
                     torch.save(model.state_dict(), f"{model_save_path}_{cur_f1:.4f}.pth")
                     best_valid_f1 = cur_f1
-                    
+
                     if len(glob(f'{model_save_path}_*.pth')) >= opts.save_limit:
                         remove_item = sorted(glob(f'{model_save_path}_*.pth'))[0]
                         os.remove(remove_item)
@@ -304,8 +307,8 @@ def train(df, model, criterion, optimizer, scheduler, opts):
                 f"loss : {valid_item[0]:.5}, best loss: {best_valid_loss:.5} || "
             )
             print()
-    
-    
+
+
 if __name__ == '__main__':
     main()
 
