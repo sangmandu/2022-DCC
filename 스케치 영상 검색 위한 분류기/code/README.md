@@ -55,7 +55,7 @@ python classify.py --outdir output --datadir ../data --model_name EfficientNet
 ### All arguments
 ```
 @click.option('--outdir',       help='Where to save the results',           metavar='DIR',      type=str,           required=True)
-@click.option('--datadir',      help='Data path',                            metavar='DIR',      type=str,           required=True)
+@click.option('--datadir',      help='Data path',                           metavar='DIR',      type=str,           required=True)
 @click.option('--model_name',   help='Model name to train',                 metavar='STR',      type=str,           required=True)
 
 # Optional features.
