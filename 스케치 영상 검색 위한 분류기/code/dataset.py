@@ -1,119 +1,140 @@
-from tqdm import tqdm
+from datetime import datetime
+
+from torchvision import transforms
+from torchvision.transforms import *
+from torch.utils.data import Dataset
+import torch
+
 from glob import glob
+from tqdm import tqdm
+from PIL import Image
 
-import tensorflow as tf
-import matplotlib.pyplot as plt
-
-import numpy as np
+import pandas as pd
 import os
 import re
 
 
-# 바이트 피처 함수
-def bytes_feature(values):
-    return tf.train.Feature(bytes_list=tf.train.BytesList(value=[values]))
+class Dataset(Dataset):
+    def __init__(self, df, resize, mean=(0.8103, 0.7944, 0.7771), std=(0.2300, 0.2430, 0.2584), type='train'):
+        self.df = df
+
+        if type == 'train':
+            self.transform = TrainAugmentation(resize, mean, std)
+        else:
+            self.transform = BaseAugmentation(resize, mean, std)
+
+    def __len__(self):
+        return len(self.df)
+
+    def __getitem__(self, index):
+        assert self.transform is not None, "[train_dataset] : .set_tranform 메소드를 이용하여 transform 을 주입해주세요"
+
+        name = self.df.name.iloc[index]
+
+        path = self.df.path.iloc[index]
+        image = Image.open(path).convert('RGB')
+        image_transform = self.transform(image)
+
+        label = self.df.label.iloc[index]
+
+        return name, image_transform, label
 
 
-# int 피처 함수
-def int64_feature(values):
-    if not isinstance(values, (tuple, list)):
-        values = [values]
-    return tf.train.Feature(int64_list=tf.train.Int64List(value=values))
+class TrainAugmentation:
+    def __init__(self, resize, mean, std, **args):
+        self.transform = transforms.Compose([
+            Resize((resize, resize)),
+            RandomChoice([ColorJitter(brightness=(0.2, 3)),
+                         ColorJitter(contrast=(0.2, 3)),
+                         ColorJitter(saturation=(0.2, 3)),
+                         ColorJitter(hue=(-0.3, 0.3))]),
+            RandomHorizontalFlip(p=0.5),
+            ToTensor(),
+            Normalize(mean=mean, std=std),
+        ])
+
+    def __call__(self, image):
+        return self.transform(image)
 
 
-# 이미지 파일 binary 형태 불러오는 함수
-def read_imagebytes(data):
-    file = open(data, 'rb')
-    bytes = file.read()
-    return bytes
+class BaseAugmentation:
+    def __init__(self, resize, mean, std, **args):
+        self.transform = transforms.Compose([
+            Resize((resize, resize)),
+            ToTensor(),
+            Normalize(mean=mean, std=std),
+        ])
+
+    def __call__(self, image):
+        return self.transform(image)
 
 
-def write_tfrecord(data_path, save_path):
-    writer = tf.io.TFRecordWriter(save_path)
+def remove_duplicated_images(paths):
+    '''
 
-    for data in tqdm(glob(os.path.join(data_path, '*', '*'))):
-        image_data = read_imagebytes(data)  # 이미지 파일 binary 형태 정보
-        label = re.findall('[0-9]{2}', data)[0]  # 데이터 라벨 정보
-
-        example = tf.train.Example(features=tf.train.Features(feature={
-            # feature 정보 입력
-            'image': bytes_feature(image_data),
-            'label': int64_feature([int(label)]),
-            'name': bytes_feature(re.findall('[a-z]*[.][a-z]*', data)[0]),
-        }))
-
-        writer.write(example.SerializeToString())
+    :param paths:
+    :return:
+    '''
 
 
-def read_dataset(data_path, record_path, epochs, batch_size, resize):
-    AUTO = tf.data.experimental.AUTOTUNE
-
-    if not os.path.exists(record_path):
-        write_tfrecord(data_path, record_path)
-
-    dataset = tf.data.TFRecordDataset(record_path)
-    dataset = dataset.map(lambda x: _parse_image_function(x, resize), num_parallel_calls=AUTO)
-    dataset = dataset.prefetch(10)
-    dataset = dataset.repeat(epochs)
-    dataset = dataset.shuffle(buffer_size=10 * batch_size)
-    dataset = dataset.batch(batch_size, drop_remainder=True)
-
-    return dataset
+    return paths
 
 
-def _parse_image_function(example, resize):
-    image_feature_description = {
-        'image': tf.io.FixedLenFeature([], tf.string),
-        'label': tf.io.FixedLenFeature([], tf.int64),
-        'name': tf.io.FixedLenFeature([], tf.string),
-    }
+def sampling_images(paths):
+    '''
 
-    features = tf.io.parse_single_example(example, image_feature_description)
-    image = tf.io.decode_raw(features['image'], tf.uint8)
-    image = transform(image)
-    image = tf.reshape(image, [resize, resize, 3])
-
-    label = tf.cast(features['label'], tf.int32)
-    label = tf.one_hot(label, 20)
-
-    name = tf.cast(features['name'], tf.string)
-
-    return image, label, name
+    :param paths:
+    :return:
+    '''
 
 
-def split_dataset(dataset, val_ratio=0.15, test_ratio=0.15, shuffle=True):
-    if shuffle:
-        dataset = dataset.shuffle()
 
-    dataset_size = sum(1 for _ in dataset)
-    val_size = int(dataset_size * val_ratio)
-    test_size = int(dataset_size * test_ratio)
-
-    train_dataset, valid_dataset = dataset.skip(val_size), dataset.take(val_size)
-    train_dataset, test_dataset = train_dataset.skip(test_size), train_dataset.take(test_size)
-
-    return train_dataset, valid_dataset, test_dataset
+    return paths
 
 
-def transform(image, resize):
-    image = tf.image.resize(image, (resize, resize))
-    image = tf.image.random_crop(image, (112, 112, 3))
-    image = tf.image.random_flip_left_right(image)
-    image = tf.image.random_saturation(image, 0.6, 1.4)
-    image = tf.image.random_brightness(image, 0.4)
-    image = image / 255
+def load_data(datadir, dup_sim, sampling):
+    '''
+    데이터를 불러와 중복 이미지를 제거하고 샘플링을 적용한 뒤 dataframe으로 반환합니다.
+    :param datadir:
+    :param dup_sim:
+    :param sampling:
+    :return: df:
+    '''
 
-    return image
+    labelobj = re.compile('L2_([0-9]+)')
+
+    paths = [image_path for image_path in glob(os.path.join(datadir, '*', '*'))]
+
+    only_illustration = True
+    if only_illustration:
+        paths = [path for path in paths if datetime.fromtimestamp(os.path.getmtime(path)).strftime('%Y-%m-%d') != '2022-09-28']
+
+    label_to_num = {re.findall(labelobj, path)[0]: num for num, path in enumerate(glob(os.path.join(datadir, '*')))}
+
+    if dup_sim < 1:
+        paths = remove_duplicated_images(paths)
+
+    if sampling is not None:
+        paths = sampling_images(paths)
+
+    names = [re.findall('[a-z]+[.][a-z]+', path)[0] for path in paths]
+    labels = [label_to_num[re.findall(labelobj, path)[0]] for path in paths]
+
+    df = pd.DataFrame(
+        data=zip(names, paths, labels),
+        columns=['name', 'path', 'label']
+    )
+
+    return df
 
 
-def show_batch(dataset):
-    image_batch, _, _ = next(iter(dataset))
-    image_batch = image_batch[:25]
+# https://kozodoi.me/python/deep%20learning/pytorch/tutorial/2021/03/08/image-mean-std.html
+def compute_mean_std():
+    pass
 
-    plt.figure(figsize=(15, 15))
-    for n in range(25):
-        plt.subplot(5, 5, n + 1)
-        plt.imshow(image_batch[n] / 255.0)
-        plt.axis("off")
-    plt.show()
 
+
+
+def denormalize_image(inputs_np, mean, std):
+    pass
+    
