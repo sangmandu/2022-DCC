@@ -297,7 +297,7 @@ def train(df, model, criterion, optimizer, scheduler, opts):
                     torch.save(model.state_dict(), f"{model_save_path}_{cur_f1:.4f}.pth")
                     best_valid_f1 = cur_f1
 
-                    if len(glob(f'{model_save_path}_*.pth')) >= opts.save_limit:
+                    if len(glob(f'{model_save_path}_*.pth')) > opts.save_limit:
                         remove_item = sorted(glob(f'{model_save_path}_*.pth'))[0]
                         os.remove(remove_item)
 
