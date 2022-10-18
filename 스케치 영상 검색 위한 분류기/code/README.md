@@ -21,17 +21,17 @@ tqdm                          4.64.1
 ## Contents
 ```
 code
-│  classify.py : [Mission 3] : 일러스트 이미지 20종류 분류
-│  cluster.py : [Mission 2] 실사와 일러스트 이미지 구분
+│  classify.py
+│  cluster.py
 │  dataset.py
 │  loss.py
+│  README.md
 │  requirements.txt
 │  scheduler.py
 │  utils.py
 │
 ├─models
 │  │  AutoEncoder.py
-│  │  BasicCNN.py
 │  │
 │  ├─BaseModel
 │  │      model.py
