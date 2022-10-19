@@ -1,4 +1,3 @@
-
 from dataset import load_data, Dataset
 from utils import *
 from loss import create_criterion
@@ -18,9 +17,9 @@ import os
 from torch.optim.lr_scheduler import StepLR, CyclicLR
 from torch.utils.data import DataLoader
 import torch
-DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-
 import warnings
+
+DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 warnings.filterwarnings(action='ignore')
 
 
@@ -36,7 +35,7 @@ warnings.filterwarnings(action='ignore')
 @click.option('--batch_size',   help='Total batch size',                    metavar='INT',      type=click.IntRange(min=1),                 default=256)
 @click.option('--epochs',       help='Epochs',                              metavar='INT',      type=click.IntRange(min=1),                 default=15)
 @click.option('--fold',         help='Whether to apply cross fold',         metavar='BOOL',     type=bool,                                  default=False)
-@click.option('--lr',           help='Learning rate',                       metavar='FLOAT',    type=click.FloatRange(min=0),               default=1e-2)
+@click.option('--lr',           help='Learning rate',                       metavar='FLOAT',    type=click.FloatRange(min=0),               default=1e-1)
 @click.option('--optimizer',    help='Optimizer ',                          metavar='STR',      type=str,                                   default='Adam')
 @click.option('--scheduler',    help='Scheduler',                           metavar='STR',      type=str,                                   default='CyclicLR')
 @click.option('--criterion',    help='Loss function',                       metavar='STR',      type=str,                                   default='cross_entropy')
@@ -51,7 +50,7 @@ warnings.filterwarnings(action='ignore')
 @click.option('--sampling',     help='What sampling to apply',              metavar='STR',      type=str,                                   default='')
 
 # Misc settings.
-@click.option('--save_name',    help='Name of model when saved',            metavar='STR',      type=str,                                   default='experiment',    show_default=True)
+@click.option('--save_name',    help='Name of model when saved',            metavar='STR',      type=str,                                   default='experiment',   show_default=True)
 @click.option('--save_limit',   help='# of saved models',                   metavar='INT',      type=click.IntRange(min=1),                 default=2,              show_default=True)
 @click.option('--seed',         help='Random seed',                         metavar='INT',      type=click.IntRange(min=0),                 default=0,              show_default=True)
 # @click.option('--workers',      help='DataLoader worker processes',         metavar='INT',      type=click.IntRange(min=1),                 default=3,              show_default=True)
@@ -190,9 +189,13 @@ def train(df, model, criterion, optimizer, scheduler, opts):
     model_save_path = os.path.join(opts.outdir, opts.model_name, opts.save_name)
 
     name_index = 1
-    while len(glob(model_save_path)) > 0:
-        model_save_path += str(name_index)
+    save_path_check = model_save_path
+    while len(glob(save_path_check + '_*')) > 0:
+        save_path_check = model_save_path
+        save_path_check += str(name_index)
         name_index += 1
+
+    model_save_path = save_path_check
 
     for epoch in range(opts.epochs):
         model.train()

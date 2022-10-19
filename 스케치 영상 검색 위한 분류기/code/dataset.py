@@ -27,8 +27,6 @@ class Dataset(Dataset):
         return len(self.df)
 
     def __getitem__(self, index):
-        assert self.transform is not None, "[train_dataset] : .set_tranform 메소드를 이용하여 transform 을 주입해주세요"
-
         name = self.df.name.iloc[index]
 
         path = self.df.path.iloc[index]
@@ -45,9 +43,9 @@ class TrainAugmentation:
         self.transform = transforms.Compose([
             Resize((resize, resize)),
             RandomChoice([ColorJitter(brightness=(0.2, 3)),
-                         ColorJitter(contrast=(0.2, 3)),
-                         ColorJitter(saturation=(0.2, 3)),
-                         ColorJitter(hue=(-0.3, 0.3))]),
+                          ColorJitter(contrast=(0.2, 3)),
+                          ColorJitter(saturation=(0.2, 3)),
+                          ColorJitter(hue=(-0.3, 0.3))]),
             RandomHorizontalFlip(p=0.5),
             ToTensor(),
             Normalize(mean=mean, std=std),
@@ -76,7 +74,6 @@ def remove_duplicated_images(paths):
     :return:
     '''
 
-
     return paths
 
 
@@ -86,8 +83,6 @@ def sampling_images(paths):
     :param paths:
     :return:
     '''
-
-
 
     return paths
 
@@ -133,8 +128,6 @@ def compute_mean_std():
     pass
 
 
-
-
 def denormalize_image(inputs_np, mean, std):
     pass
-    
+
