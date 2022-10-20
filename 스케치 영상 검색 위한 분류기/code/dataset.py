@@ -8,6 +8,7 @@ import torch
 from glob import glob
 from tqdm import tqdm
 from PIL import Image
+from imagededup.methods import CNN
 
 import pandas as pd
 import os
