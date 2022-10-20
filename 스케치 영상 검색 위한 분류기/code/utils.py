@@ -60,4 +60,16 @@ def get_score():
 
 
 def cutmix(inputs, labels):
-    pass
+    W = inputs.shape[2]
+    mix_ratio = np.random.beta(1, 1)
+    cut_W = np.int(W * mix_ratio)
+    bbx1 = np.random.randint(W - cut_W)
+    bbx2 = bbx1 + cut_W
+
+    rand_index = torch.randperm(len(inputs))
+    labels_a = labels # 원본 이미지 label
+    labels_b = labels[rand_index] # 패치 이미지 label
+
+    inputs[:, :, :,bbx1:bbx2] = inputs[rand_index, :, :, bbx1:bbx2]
+
+    return inputs, labels_a, labels_b, mix_ratio
