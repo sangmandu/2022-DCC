@@ -67,14 +67,21 @@ class BaseAugmentation:
         return self.transform(image)
 
 
-def remove_duplicated_images(paths):
-    '''
-
-    :param paths:
-    :return:
-    '''
-
-    return paths
+def remove_duplicated_images(datadir, paths, dup_sim):
+    cnn = CNN()
+    directory = glob(os.path.join(datadir, '*'))
+    dup_path = [] # 중복 이미지 path 리스트
+    for i in tqdm(directory):
+        encodings = cnn.encode_images(image_dir=i)
+        duplicates = cnn.find_duplicates_to_remove(encoding_map = encodings, 
+                                                   image_dir = i,
+                                                   min_similarity_threshold = dup_sim)
+        dup_tmp = list(map(lambda x: i + '/' + x, duplicates)) # 중복 이미지 전체 path
+        dup_path.extend(dup_tmp)
+    dup_path = list(map(lambda x: x.replace('\\', '/'), dup_path)) # 역슬래시 -> 슬래시
+    paths = list(map(lambda x: x.replace('\\', '/'), paths)) # 역슬래시 -> 슬래시
+    dup_remove_paths = [x for x in paths if x not in dup_path] # 최종 이미지 path 생성
+    return dup_remove_paths
 
 
 def sampling_images(paths):
