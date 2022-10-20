@@ -114,7 +114,7 @@ def load_data(datadir, dup_sim, sampling):
     label_to_num = {re.findall(labelobj, path)[0]: num for num, path in enumerate(glob(os.path.join(datadir, '*')))}
 
     if dup_sim < 1:
-        paths = remove_duplicated_images(paths)
+        paths = remove_duplicated_images(datadir, paths, dup_sim)
 
     if sampling is not None:
         paths = sampling_images(paths)
