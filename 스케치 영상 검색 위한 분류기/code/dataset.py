@@ -95,6 +95,56 @@ def sampling_images(paths):
     return paths
 
 
+def suburb(path) :
+    image = cv2.imread(path)
+    image_gray = cv2.imread(path,cv2.IMREAD_GRAYSCALE)
+
+#블러가 약하면 배경의 외곽도 포함되므로 ksize를 적당히 조절
+    blur = cv2.GaussianBlur(image_gray, ksize=(5,5), sigmaX=0)
+    ret, thresh1 = cv2.threshold(blur, 127, 255, cv2.THRESH_BINARY)
+
+#모서리(외곽)을 찾기
+    edged = cv2.Canny(blur, 10, 250)
+
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (7,7))
+    closed = cv2.morphologyEx(edged, cv2.MORPH_CLOSE, kernel)
+
+    contours, _ = cv2.findContours(closed.copy(),cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    total = 0   
+
+    contours_xy = np.array(contours)
+
+    # x의 min과 max 찾기
+    x_min, x_max = 0,0
+    value = list()
+    for i in range(len(contours_xy)):
+        for j in range(len(contours_xy[i])):
+            value.append(contours_xy[i][j][0][0]) #네번째 괄호가 0일때 x의 값
+            x_min = min(value)
+            x_max = max(value)
+
+    # y의 min과 max 찾기
+    y_min, y_max = 0,0
+    value = list()
+    for i in range(len(contours_xy)):
+        for j in range(len(contours_xy[i])):
+            value.append(contours_xy[i][j][0][1]) #네번째 괄호가 0일때 x의 값
+            y_min = min(value)
+            y_max = max(value)
+
+    x = x_min
+    y = y_min
+    w = x_max-x_min
+    h = y_max-y_min
+
+
+    if (x==0 and w ==0) or (y==0 and h ==0):img_trim = image
+    else: img_trim = image[y:y+h, x:x+w]
+
+    cv2.imwrite(path, img_trim)
+
+
+
 def load_data(datadir, dup_sim, sampling):
     '''
     데이터를 불러와 중복 이미지를 제거하고 샘플링을 적용한 뒤 dataframe으로 반환합니다.
@@ -127,6 +177,9 @@ def load_data(datadir, dup_sim, sampling):
         data=zip(names, paths, labels),
         columns=['name', 'path', 'label']
     )
+    
+    for i in range(len(df)):
+    suburb(df.iloc[i]['path'])
 
     return df
 
