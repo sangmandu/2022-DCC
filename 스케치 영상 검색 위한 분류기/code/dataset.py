@@ -99,11 +99,9 @@ def suburb(path) :
     image = cv2.imread(path)
     image_gray = cv2.imread(path,cv2.IMREAD_GRAYSCALE)
 
-#블러가 약하면 배경의 외곽도 포함되므로 ksize를 적당히 조절
     blur = cv2.GaussianBlur(image_gray, ksize=(5,5), sigmaX=0)
     ret, thresh1 = cv2.threshold(blur, 127, 255, cv2.THRESH_BINARY)
 
-#모서리(외곽)을 찾기
     edged = cv2.Canny(blur, 10, 250)
 
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (7,7))
@@ -114,7 +112,6 @@ def suburb(path) :
 
     contours_xy = np.array(contours)
 
-    # x의 min과 max 찾기
     x_min, x_max = 0,0
     value = list()
     for i in range(len(contours_xy)):
@@ -123,7 +120,6 @@ def suburb(path) :
             x_min = min(value)
             x_max = max(value)
 
-    # y의 min과 max 찾기
     y_min, y_max = 0,0
     value = list()
     for i in range(len(contours_xy)):
@@ -178,8 +174,7 @@ def load_data(datadir, dup_sim, sampling):
         columns=['name', 'path', 'label']
     )
     
-    for i in range(len(df)):
-    suburb(df.iloc[i]['path'])
+    df['path'] = df['path'].map(lambda x: suburb(x))
 
     return df
 
