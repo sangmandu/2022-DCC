@@ -10,7 +10,9 @@ from tqdm import tqdm
 from PIL import Image
 from imagededup.methods import CNN
 
+import cv2
 import pandas as pd
+import numpy as np
 import os
 import re
 
@@ -18,6 +20,8 @@ import re
 class Dataset(Dataset):
     def __init__(self, df, resize, mean=(0.8103, 0.7944, 0.7771), std=(0.2300, 0.2430, 0.2584), type='train'):
         self.df = df
+        self.mean = mean
+        self.std = std
 
         if type == 'train':
             self.transform = TrainAugmentation(resize, mean, std)
@@ -37,6 +41,15 @@ class Dataset(Dataset):
         label = self.df.label.iloc[index]
 
         return name, image_transform, label
+
+    @staticmethod
+    def denormalize_image(image, mean, std):
+        img_cp = image.copy()
+        img_cp *= std
+        img_cp += mean
+        img_cp *= 255.0
+        img_cp = np.clip(img_cp, 0, 255).astype(np.uint8)
+        return img_cp
 
 
 class TrainAugmentation:

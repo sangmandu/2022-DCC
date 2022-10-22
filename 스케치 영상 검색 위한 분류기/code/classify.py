@@ -35,7 +35,7 @@ warnings.filterwarnings(action='ignore')
 @click.option('--batch_size',   help='Total batch size',                    metavar='INT',      type=click.IntRange(min=1),                 default=256)
 @click.option('--epochs',       help='Epochs',                              metavar='INT',      type=click.IntRange(min=1),                 default=15)
 @click.option('--fold',         help='Whether to apply cross fold',         metavar='BOOL',     type=bool,                                  default=False)
-@click.option('--lr',           help='Learning rate',                       metavar='FLOAT',    type=click.FloatRange(min=0),               default=1e-1)
+@click.option('--lr',           help='Learning rate',                       metavar='FLOAT',    type=click.FloatRange(min=0),               default=1e-2)
 @click.option('--optimizer',    help='Optimizer ',                          metavar='STR',      type=str,                                   default='Adam')
 @click.option('--scheduler',    help='Scheduler',                           metavar='STR',      type=str,                                   default='CyclicLR')
 @click.option('--criterion',    help='Loss function',                       metavar='STR',      type=str,                                   default='cross_entropy')
@@ -94,8 +94,8 @@ def main(**kwargs):
         raise Exception("model name is incorrect")
 
     if opts.checkpoint:
+        print(f"checkpoint : {opts.checkpoint}")
         model.load_state_dict(torch.load(opts.checkpoint))
-
 
     ## Optimizer
     opt_module = getattr(import_module("torch.optim"), opts.optimizer)  # default: Adam
@@ -105,10 +105,9 @@ def main(**kwargs):
         # weight_decay=5e-4,
     )
 
-
     ## Scheduler
     ''' scheduler.py에 추후 개발 필요'''
-    base_step = int(len(df) * (1-opts.val_ratio-opts.test_ratio))
+    base_step = int(len(df) * (1 - opts.val_ratio - opts.test_ratio))
     scheduler = CyclicLR(
         optimizer,
         base_lr=1e-5,
@@ -175,7 +174,6 @@ def train(df, model, criterion, optimizer, scheduler, opts):
         # drop_last=True,
     )
 
-
     best_train_acc = best_valid_acc = 0
     best_train_loss = best_valid_loss = np.inf
     best_train_f1 = best_valid_f1 = 0
@@ -221,7 +219,6 @@ def train(df, model, criterion, optimizer, scheduler, opts):
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            scheduler.step()
 
             train_batch_loss.append(
                 loss.item()
@@ -239,6 +236,8 @@ def train(df, model, criterion, optimizer, scheduler, opts):
                 f'train | f1 : {train_batch_f1[-1]:.5f} | accuracy : {train_batch_accuracy[-1]:.5f} | '
                 f'loss : {train_batch_loss[-1]:.5f} | lr : {get_lr(optimizer):.7f}'
             )
+
+        scheduler.step()
 
         train_item = (sum(train_batch_loss) / len(train_loader),
                       sum(train_batch_accuracy) / len(train_loader),
@@ -305,7 +304,7 @@ def train(df, model, criterion, optimizer, scheduler, opts):
                         os.remove(remove_item)
 
             print(
-                f"[Train] f1 : {train_item[2]:.5}, best f1 : {best_train_f1:.5} || " 
+                f"[Train] f1 : {train_item[2]:.5}, best f1 : {best_train_f1:.5} || "
                 f"acc : {train_item[1]:.5%}, best acc: {best_train_acc:.5%} || "
                 f"loss : {train_item[0]:.5}, best loss: {best_train_loss:.5} || "
             )
