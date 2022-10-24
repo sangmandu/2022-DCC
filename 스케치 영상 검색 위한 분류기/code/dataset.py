@@ -20,6 +20,10 @@ import os
 import re
 import pickle
 
+from collections import defaultdict
+from imblearn.under_sampling import RandomUnderSampler 
+from imblearn.under_sampling import ClusterCentroids
+from imblearn.under_sampling import NearMiss 
 
 class Dataset(Dataset):
     def __init__(self, df, resize, mean=(0.7727, 0.7547, 0.7352), std=(0.2610, 0.2741, 0.2907), type='train'):
@@ -111,13 +115,122 @@ def remove_duplicated_images(datadir, paths, dup_sim):
     return dup_remove_paths
 
 
-def sampling_images(paths):
+def sampling_images(paths, sampling):
     '''
+    설치 : pip install imbalanced-learn
+
+    from collections import defaultdict
+    from imblearn.under_sampling import RandomUnderSampler 
 
     :param paths:
     :return:
     '''
+    samplings = ['random', 'cluster', 'nearmiss'] # 언더샘플링 리스트
+    pre_paths = paths[0][:paths[0].find("L2")] # 클래스명 앞 패스 경로
+    label_imgs = defaultdict(list)
+    for path in paths:
+        label = path[path.find("L2"):path.rfind("/")] # 클래스명(key)
+        label_imgs[label].append(path)
 
+    if sampling not in samplings : # 샘플링 기법 안에 없는 샘플링을 넣었을 때
+        return paths
+    
+    paths2 = list() # 언더샘플링 된 리스트
+    if sampling.lower().strip() == "random" :
+        img_dict = defaultdict(list)
+        for label_ in label_imgs.keys():
+            for img_path in label_imgs[label_]:
+                img_dict['name'].append(img_path)
+                img_dict['label'].append(label_)
+
+        X_df = pd.DataFrame(img_dict)
+
+        # 언더샘플링 X ,y 분할
+        X = X_df.drop(columns=["label"],axis=1)
+        y = X_df['label']
+
+        # 언더샘플링
+        undersample = RandomUnderSampler() # sampling_strategy=label_imgs
+        X_under, y_under = undersample.fit_resample(X, y)
+
+        # 결과 저장 
+        for img_path in X_under['name'] :
+          paths2.append(img_path)
+        return paths2
+
+    if sampling.lower().strip() == "cluster" :
+        img_dict = defaultdict(list)
+        for label_ in label_imgs.keys():
+            for image_path in label_imgs[label_]:
+                img_array = np.fromfile(image_path, np.uint8)
+                img = cv2.imdecode(img_array, cv2.IMREAD_REDUCED_COLOR_4) # 24 * 4 = 96인데 가장 작은 값이 98임으로
+                img = cv2.cvtColor(img,cv2.COLOR_BGR2RGB)
+                img2 = cv2.resize(img, (64, 64)) # 사이즈 조절 이미지 (w , h)
+                cnt = 0
+                for i in img2: # 
+                    for j in i :
+                        img_dict[cnt].append(int(np.mean(j)))
+                        cnt += 1
+                img_dict['label'].append(label_)
+                img_dict['name'].append(image_path)
+        X_df = pd.DataFrame(img_dict)
+
+        name_dict = defaultdict(str)
+        for idx, name in enumerate(X_df["name"]):
+            name_dict[idx] = name
+        X_df['name'] = name_dict.keys()
+
+        # 언더 샘플링   
+        X = X_df.drop(columns=['label'], axis = 1)
+        y = X_df['label']
+        undersample = ClusterCentroids(voting="hard")
+        X_under, y_under = undersample.fit_resample(X, y)
+
+        # 이미지 이름 찾기 
+        X_under['name'] = X_under['name'].apply(lambda x : name_dict[x])
+        X_under.drop_duplicates()# 중복 제거 
+
+        # 결과 저장 
+        for img_path in X_under['name'] :
+          paths2.append(img_path)
+        return paths2
+
+    if sampling.lower().strip() == "nearmiss" :
+        img_dict = defaultdict(list)
+        for label_ in label_imgs.keys():
+            for image_path in label_imgs[label_]:
+                img_array = np.fromfile(image_path, np.uint8)
+                img = cv2.imdecode(img_array, cv2.IMREAD_REDUCED_COLOR_4) # 24 * 4 = 96인데 가장 작은 값이 98임으로
+                img = cv2.cvtColor(img,cv2.COLOR_BGR2RGB)
+                img2 = cv2.resize(img, (24, 24)) # 사이즈 조절 이미지 (w , h)
+                cnt = 0
+                for i in img2: # 
+                    for j in i :
+                        img_dict[cnt].append(int(np.mean(j)))
+                        cnt += 1
+                img_dict['label'].append(label_)
+                img_dict['name'].append(image_path)
+        X_df = pd.DataFrame(img_dict)
+
+        name_dict = defaultdict(str)
+        for idx, name in enumerate(X_df["name"]):
+            name_dict[idx] = name
+        X_df['name'] = name_dict.keys()
+
+        # 언더 샘플링   
+        X = X_df.drop(columns=['label'], axis = 1)
+        y = X_df['label']
+        undersample = NearMiss(version = 1, n_neighbors = 3)
+        X_under, y_under = undersample.fit_resample(X, y)
+
+        # 이미지 이름 찾기 
+        X_under['name'] = X_under['name'].apply(lambda x : name_dict[x])
+        X_under.drop_duplicates()# 중복 제거 
+
+        # 결과 저장 
+        for img_path in X_under['name'] :
+          paths2.append(img_path)
+        return paths2
     return paths
 
 
