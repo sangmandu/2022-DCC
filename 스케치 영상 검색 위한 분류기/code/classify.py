@@ -49,7 +49,7 @@ os.environ['WANDB_SILENT'] = "true"
 @click.option('--checkpoint',   help='checkpoint path',                     metavar='DIR',      type=str,                                   default='')
 
 # Image settings.
-@click.option('--aug',          help='transform image or not',              metavar='FLOAT',    type=bool,                                  default=False)
+@click.option('--aug',          help='transform image or not',              metavar='FLOAT',    type=bool,                                  default=True)
 @click.option('--cutmix',       help='Cutmix probability',                  metavar='FLOAT',    type=click.FloatRange(min=0, max=1),        default=0)
 @click.option('--dup_sim',      help='threshold of duplicate similarity',   metavar='FLOAT',    type=click.FloatRange(min=0, max=1),        default=1)
 @click.option('--sampling',     help='What sampling to apply',              metavar='STR',      type=str,                                   default='')
@@ -164,9 +164,9 @@ def train(df, model, criterion, optimizer, scheduler, opts):
     # valid_df, test_df = train_test_split(eval_df, test_size=opts.val_ratio, stratify=eval_df[['label']])
 
     ## Dataset
-    train_dataset = Dataset(train_df, resize=opts.resize, type='train')
-    valid_dataset = Dataset(eval_df, resize=opts.resize, type='eval')
-    # test_dataset = Dataset(test_df, resize=opts.resize, type='eval')
+    train_dataset = Dataset(train_df, resize=opts.resize, aug=opts.aug)
+    valid_dataset = Dataset(eval_df, resize=opts.resize, aug=False)
+    # test_dataset = Dataset(test_df, resize=opts.resize, aug=False)
 
     ## check image stats
     if opts.check_stat:

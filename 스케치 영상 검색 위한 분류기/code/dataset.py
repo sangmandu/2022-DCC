@@ -22,13 +22,13 @@ import pickle
 
 
 class Dataset(Dataset):
-    def __init__(self, df, resize, mean=(0.7727, 0.7547, 0.7352), std=(0.2610, 0.2741, 0.2907), type='train'):
+    def __init__(self, df, resize, mean=(0.7727, 0.7547, 0.7352), std=(0.2610, 0.2741, 0.2907), aug=True, transform=None):
         self.df = df
         self.mean = mean
         self.std = std
 
-        if type == 'train':
-            self.transform = TrainAugmentation(resize, mean, std)
+        if aug:
+            self.transform = transform if transform is not None else TrainAugmentation(resize, mean, std)
         else:
             self.transform = BaseAugmentation(resize, mean, std)
 
@@ -59,12 +59,22 @@ class Dataset(Dataset):
 class TrainAugmentation:
     def __init__(self, resize, mean, std, **args):
         self.transform = transforms.Compose([
-            Resize((resize, resize)),
-            RandomChoice([ColorJitter(brightness=(0.2, 3)),
-                          ColorJitter(contrast=(0.2, 3)),
-                          ColorJitter(saturation=(0.2, 3)),
-                          ColorJitter(hue=(-0.3, 0.3))]),
+            transforms.RandomCrop(224),
+            transforms.RandomApply([
+                transforms.CenterCrop(size=96),
+            ], p=0.3),
+            transforms.RandomApply([
+                transforms.ColorJitter(brightness=0.5,
+                                       contrast=0.5,
+                                       saturation=0.5,
+                                       hue=0.1)
+            ], p=0.7),
+            transforms.RandomGrayscale(p=0.4),
+            transforms.GaussianBlur(kernel_size=9),
             RandomHorizontalFlip(p=0.5),
+            RandomVerticalFlip(p=0.5),
+            RandomRotation(degrees=180),
+            Resize((resize, resize)),
             ToTensor(),
             Normalize(mean=mean, std=std),
         ])
