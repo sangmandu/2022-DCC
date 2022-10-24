@@ -1,7 +1,8 @@
-from sklearn.metrics import f1_score, accuracy_score
-from sklearn.metrics import classification_report
+from glob import glob
+from tqdm import tqdm
+from PIL import Image
 
-import matplotlib.pyplot as plt
+import subprocess as sp
 import numpy as np
 import os
 import random
@@ -55,8 +56,24 @@ def get_lr(optimizer):
         return param_group['lr']
     
     
-def get_score():
-    pass
+def check_paths(outdir, model_name, save_name):
+    if not os.path.exists(outdir):
+        os.makedirs(outdir)
+
+    if not os.path.exists(os.path.join(outdir, model_name)):
+        os.makedirs(os.path.join(outdir, model_name))
+
+    model_save_path = os.path.join(outdir, model_name, save_name)
+
+    name_index = 1
+    save_path_check = model_save_path
+    while len(glob(save_path_check + '_*')) > 0:
+        save_path_check = model_save_path
+        save_path_check += str(name_index)
+        name_index += 1
+    model_save_path = save_path_check
+
+    return model_save_path
 
 
 def cutmix(inputs, labels):
@@ -78,3 +95,26 @@ def cutmix(inputs, labels):
     inputs[:, :, bby1:bby2,bbx1:bbx2] = inputs[rand_index, :, bby1:bby2, bbx1:bbx2]
 
     return inputs, labels_a, labels_b, mix_ratio
+
+
+# https://kozodoi.me/python/deep%20learning/pytorch/tutorial/2021/03/08/image-mean-std.html
+def compute_mean_std(train_df, resize):
+    mean = np.zeros(3)
+    std = np.zeros(3)
+    count = len(train_df)
+
+    print("Computing both mean and std of images")
+    for path in tqdm(train_df.path.values):
+        image = np.array(Image.open(path).convert('RGB').resize((resize, resize)))
+        mean += image.mean(axis=(0, 1))
+        std += image.std(axis=(0, 1))
+
+    return mean / count / 255, std / count / 255
+
+
+def get_gpu_memory():
+    command = "nvidia-smi --query-gpu=memory.free --format=csv"
+    memory_free_info = sp.check_output(command.split()).decode('ascii').split('\n')[:-1][1:]
+    memory_free_values = [int(x.split()[0]) for i, x in enumerate(memory_free_info)]
+    return memory_free_values
+

@@ -10,17 +10,22 @@ from tqdm import tqdm
 from sklearn.metrics import f1_score
 from sklearn.model_selection import train_test_split, StratifiedKFold
 
-import multiprocessing
-import click
-import os
-
 from torch.optim.lr_scheduler import StepLR, CyclicLR
 from torch.utils.data import DataLoader
 import torch
+
+import multiprocessing
+import click
+import os
+import wandb
 import warnings
 
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 warnings.filterwarnings(action='ignore')
+
+os.environ['WANDB_LOG_MODEL'] = 'true'
+os.environ['WANDB_WATCH'] = 'all'
+os.environ['WANDB_SILENT'] = "true"
 
 
 @click.command()
@@ -32,15 +37,15 @@ warnings.filterwarnings(action='ignore')
 
 # Optional features.
 @click.option('--resize',       help='How much to resize',                  metavar='INT',      type=click.IntRange(min=1),                 default=64)
-@click.option('--batch_size',   help='Total batch size',                    metavar='INT',      type=click.IntRange(min=1),                 default=256)
-@click.option('--epochs',       help='Epochs',                              metavar='INT',      type=click.IntRange(min=1),                 default=15)
-@click.option('--fold',         help='Whether to apply cross fold',         metavar='BOOL',     type=bool,                                  default=False)
+@click.option('--batch_size',   help='Total batch size',                    metavar='INT',      type=click.IntRange(min=1),                 default=512)
+@click.option('--epochs',       help='Epochs',                              metavar='INT',      type=click.IntRange(min=1),                 default=25)
+@click.option('--fold',         help='Whether to apply cross fold',         metavar='BOOL',     is_flag=True)
 @click.option('--lr',           help='Learning rate',                       metavar='FLOAT',    type=click.FloatRange(min=0),               default=1e-2)
 @click.option('--optimizer',    help='Optimizer ',                          metavar='STR',      type=str,                                   default='Adam')
 @click.option('--scheduler',    help='Scheduler',                           metavar='STR',      type=str,                                   default='CyclicLR')
 @click.option('--criterion',    help='Loss function',                       metavar='STR',      type=str,                                   default='cross_entropy')
-@click.option('--val_ratio',    help='Proportion of valid dataset',         metavar='FLOAT',    type=click.FloatRange(min=0.1),             default=0.15)
-@click.option('--test_ratio',   help='Proportion of test dataset',          metavar='FLOAT',    type=click.FloatRange(min=0.1),             default=0.15)
+@click.option('--val_ratio',    help='Proportion of valid dataset',         metavar='FLOAT',    type=click.FloatRange(),                    default=0.2)
+@click.option('--test_ratio',   help='Proportion of test dataset',          metavar='FLOAT',    type=click.FloatRange(),                    default=0)
 @click.option('--checkpoint',   help='checkpoint path',                     metavar='DIR',      type=str,                                   default='')
 
 # Image settings.
@@ -48,12 +53,15 @@ warnings.filterwarnings(action='ignore')
 @click.option('--cutmix',       help='Cutmix probability',                  metavar='FLOAT',    type=click.FloatRange(min=0, max=1),        default=0)
 @click.option('--dup_sim',      help='threshold of duplicate similarity',   metavar='FLOAT',    type=click.FloatRange(min=0, max=1),        default=1)
 @click.option('--sampling',     help='What sampling to apply',              metavar='STR',      type=str,                                   default='')
+@click.option('--use_crop',     help='use crop image for enhancement',      metavar='BOOL',     is_flag=True)
+@click.option('--check_stat',   help='computing image mean and std',        metavar='BOOL',     is_flag=True)
+@click.option('--only_illust',  help='train only illustration image or not',metavar='BOOL',     type=bool,                                  default=True)
 
 # Misc settings.
-@click.option('--save_name',    help='Name of model when saved',            metavar='STR',      type=str,                                   default='experiment',   show_default=True)
-@click.option('--save_limit',   help='# of saved models',                   metavar='INT',      type=click.IntRange(min=1),                 default=2,              show_default=True)
-@click.option('--seed',         help='Random seed',                         metavar='INT',      type=click.IntRange(min=0),                 default=0,              show_default=True)
-# @click.option('--workers',      help='DataLoader worker processes',         metavar='INT',      type=click.IntRange(min=1),                 default=3,              show_default=True)
+@click.option('--save_name',    help='Name of model when saved',            metavar='STR',      type=str,                                   default='experiment')
+@click.option('--save_limit',   help='# of saved models',                   metavar='INT',      type=click.IntRange(min=1),                 default=2           )
+@click.option('--seed',         help='Random seed',                         metavar='INT',      type=click.IntRange(min=0),                 default=0           )
+@click.option('--use_wandb',    help='Wandb',                               metavar='BOOL',     is_flag=True)
 
 
 def main(**kwargs):
@@ -64,8 +72,20 @@ def main(**kwargs):
     ## Random Seed
     set_seed(opts.seed)
 
+    ## Wandb Settings
+    if opts.use_wandb:
+        wandb.init(
+            project=opts.model_name,
+            name=opts.save_name,
+            config=opts,
+            # reinit=True,
+        )
+
+    ## Path Settings
+    opts.save_name = check_paths(opts.outdir, opts.model_name, opts.save_name)
+
     ## Data
-    df = load_data(opts.datadir, opts.dup_sim, opts.sampling)
+    df = load_data(opts.datadir, opts.dup_sim, opts.sampling, opts.use_crop, opts.only_illust)
 
     ## Loss Function
     if opts.criterion == 'weight_cross_entropy':
@@ -93,6 +113,7 @@ def main(**kwargs):
     else:
         raise Exception("model name is incorrect")
 
+    ## Checkpoint
     if opts.checkpoint:
         print(f"checkpoint : {opts.checkpoint}")
         model.load_state_dict(torch.load(opts.checkpoint))
@@ -118,6 +139,7 @@ def main(**kwargs):
         mode="triangular")
 
     ## Train
+    print("Start training")
     train(df, model, criterion, optimizer, scheduler, opts)
 
 
@@ -139,12 +161,21 @@ def train(df, model, criterion, optimizer, scheduler, opts):
     ## Stratified K-Fold
     ''' 추후 구현'''
     train_df, eval_df = train_test_split(df, test_size=opts.val_ratio + opts.test_ratio, stratify=df[['label']])
-    valid_df, test_df = train_test_split(eval_df, test_size=opts.val_ratio, stratify=eval_df[['label']])
+    # valid_df, test_df = train_test_split(eval_df, test_size=opts.val_ratio, stratify=eval_df[['label']])
 
     ## Dataset
     train_dataset = Dataset(train_df, resize=opts.resize, type='train')
-    valid_dataset = Dataset(valid_df, resize=opts.resize, type='eval')
-    test_dataset = Dataset(test_df, resize=opts.resize, type='eval')
+    valid_dataset = Dataset(eval_df, resize=opts.resize, type='eval')
+    # test_dataset = Dataset(test_df, resize=opts.resize, type='eval')
+
+    ## check image stats
+    if opts.check_stat:
+        mean, std = compute_mean_std(train_df, opts.resize)
+        print(f"mean : {mean}")
+        print(f"std : {std}")
+
+        train_dataset.mean = valid_dataset.mean = mean
+        train_dataset.std = valid_dataset.std = std
 
     ## DataLoader
     train_loader = DataLoader(
@@ -165,35 +196,20 @@ def train(df, model, criterion, optimizer, scheduler, opts):
         # drop_last=True,
     )
 
-    test_loader = DataLoader(
-        dataset=test_dataset,
-        batch_size=opts.batch_size,
-        num_workers=multiprocessing.cpu_count() // 3,
-        shuffle=False,
-        pin_memory=True,
-        # drop_last=True,
-    )
+    # test_loader = DataLoader(
+    #     dataset=test_dataset,
+    #     batch_size=opts.batch_size,
+    #     num_workers=multiprocessing.cpu_count() // 3,
+    #     shuffle=False,
+    #     pin_memory=True,
+    #     # drop_last=True,
+    # )
 
+
+    ## train
     best_train_acc = best_valid_acc = 0
     best_train_loss = best_valid_loss = np.inf
     best_train_f1 = best_valid_f1 = 0
-
-    if not os.path.exists(opts.outdir):
-        os.makedirs(opts.outdir)
-
-    if not os.path.exists(os.path.join(opts.outdir, opts.model_name)):
-        os.makedirs(os.path.join(opts.outdir, opts.model_name))
-
-    model_save_path = os.path.join(opts.outdir, opts.model_name, opts.save_name)
-
-    name_index = 1
-    save_path_check = model_save_path
-    while len(glob(save_path_check + '_*')) > 0:
-        save_path_check = model_save_path
-        save_path_check += str(name_index)
-        name_index += 1
-
-    model_save_path = save_path_check
 
     for epoch in range(opts.epochs):
         model.train()
@@ -232,7 +248,7 @@ def train(df, model, criterion, optimizer, scheduler, opts):
             )
 
             train_pbar.set_description(
-                f'Epoch #{epoch:2.0f} | '
+                f'Epoch #{epoch+1:2.0f} | '
                 f'train | f1 : {train_batch_f1[-1]:.5f} | accuracy : {train_batch_accuracy[-1]:.5f} | '
                 f'loss : {train_batch_loss[-1]:.5f} | lr : {get_lr(optimizer):.7f}'
             )
@@ -296,11 +312,11 @@ def train(df, model, criterion, optimizer, scheduler, opts):
             if cur_f1 >= best_valid_f1:
                 if cur_f1 == best_valid_f1:
                     print(f"New best model for valid f1 : {cur_f1:.5%}! saving the best model..")
-                    torch.save(model.state_dict(), f"{model_save_path}_{cur_f1:.4f}.pth")
+                    torch.save(model.state_dict(), f"{opts.save_name}_{cur_f1:.4f}.pth")
                     best_valid_f1 = cur_f1
 
-                    if len(glob(f'{model_save_path}_*.pth')) > opts.save_limit:
-                        remove_item = sorted(glob(f'{model_save_path}_*.pth'))[0]
+                    if len(glob(f'{opts.save_name}_*.pth')) > opts.save_limit:
+                        remove_item = sorted(glob(f'{opts.save_name}_*.pth'))[0]
                         os.remove(remove_item)
 
             print(
@@ -314,6 +330,18 @@ def train(df, model, criterion, optimizer, scheduler, opts):
                 f"loss : {valid_item[0]:.5}, best loss: {best_valid_loss:.5} || "
             )
             print()
+
+            wandb.log({
+                "train_loss": train_item[0],
+                "train_acc": train_item[1],
+                "train_f1": train_item[2],
+                "best_train_f1": best_train_f1,
+
+                "valid_loss": valid_item[0],
+                "valid_acc": valid_item[1],
+                "valid_f1": valid_item[2],
+                "best_valid_f1": best_valid_f1,
+            })
 
 
 if __name__ == '__main__':
