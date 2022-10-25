@@ -135,12 +135,13 @@ def sampling_images(paths, sampling):
     :param paths:
     :return:
     '''
-    samplings = ['random', 'cluster', 'nearmiss'] # 언더샘플링 리스트
+    samplings = ['random', 'cluster', 'nearmiss','nearmiss_top3', "nearmiss_realimg"] # 언더샘플링 리스트
     pre_paths = paths[0][:paths[0].find("L2")] # 클래스명 앞 패스 경로
     label_imgs = defaultdict(list)
     for path in paths:
-        label = path[path.find("L2"):path.rfind("/")] # 클래스명(key)
-        label_imgs[label].append(path)
+        label = path[path.find("L2"):path.rfind("\\")] # 클래스명(key)
+        img_name = path[path.rfind("\\")+1:]
+        label_imgs[label].append(img_name)
 
     if sampling not in samplings : # 샘플링 기법 안에 없는 샘플링을 넣었을 때
         return paths
@@ -149,8 +150,8 @@ def sampling_images(paths, sampling):
     if sampling.lower().strip() == "random" :
         img_dict = defaultdict(list)
         for label_ in label_imgs.keys():
-            for img_path in label_imgs[label_]:
-                img_dict['name'].append(img_path)
+            for img_name in label_imgs[label_]:
+                img_dict['name'].append(img_name)
                 img_dict['label'].append(label_)
 
         X_df = pd.DataFrame(img_dict)
@@ -164,8 +165,8 @@ def sampling_images(paths, sampling):
         X_under, y_under = undersample.fit_resample(X, y)
 
         # 결과 저장 
-        for img_path in X_under['name'] :
-          paths2.append(img_path)
+        for img_name,label_ in zip(X_under['name'] ,y_under):
+          paths2.append(pre_paths + label_+ "\\" + img_name)
         return paths2
 
     if sampling.lower().strip() == "cluster" :
@@ -175,7 +176,7 @@ def sampling_images(paths, sampling):
                 img_array = np.fromfile(image_path, np.uint8)
                 img = cv2.imdecode(img_array, cv2.IMREAD_REDUCED_COLOR_4) # 24 * 4 = 96인데 가장 작은 값이 98임으로
                 img = cv2.cvtColor(img,cv2.COLOR_BGR2RGB)
-                img2 = cv2.resize(img, (64, 64)) # 사이즈 조절 이미지 (w , h)
+                img2 = cv2.resize(img, (24, 24)) # 사이즈 조절 이미지 (w , h)
                 cnt = 0
                 for i in img2: # 
                     for j in i :
@@ -206,22 +207,28 @@ def sampling_images(paths, sampling):
         return paths2
 
     if sampling.lower().strip() == "nearmiss" :
-        img_dict = defaultdict(list)
-        for label_ in label_imgs.keys():
-            for image_path in label_imgs[label_]:
-                img_array = np.fromfile(image_path, np.uint8)
-                img = cv2.imdecode(img_array, cv2.IMREAD_REDUCED_COLOR_4) # 24 * 4 = 96인데 가장 작은 값이 98임으로
-                img = cv2.cvtColor(img,cv2.COLOR_BGR2RGB)
-                img2 = cv2.resize(img, (24, 24)) # 사이즈 조절 이미지 (w , h)
-                cnt = 0
-                for i in img2: # 
-                    for j in i :
-                        img_dict[cnt].append(int(np.mean(j)))
-                        cnt += 1
-                img_dict['label'].append(label_)
-                img_dict['name'].append(image_path)
-        X_df = pd.DataFrame(img_dict)
-
+        sampling_save_path = 'sampling_rgb_24x24x3_df.csv'
+        if os.path.exists(sampling_save_path):
+            X_df2 = pd.read_csv(sampling_save_path, index_col=0)
+        else:
+            img_dict = defaultdict(list)
+            for label_ in label_imgs.keys():
+                for image_name in label_imgs[label_]:
+                    img_array = np.fromfile(pre_paths + label_+ "\\" +image_name, np.uint8)
+                    img = cv2.imdecode(img_array, cv2.IMREAD_REDUCED_COLOR_4) # 24 * 4 = 96인데 가장 작은 값이 98임으로
+                    img = cv2.cvtColor(img,cv2.COLOR_BGR2RGB)
+                    img2 = cv2.resize(img, (24, 24)) # 사이즈 조절 이미지 (w , h)
+                    cnt = 0
+                    for i in img2: # 
+                        for j in i :
+                            for k in j :
+                                img_dict[cnt].append(k)
+                                cnt += 1
+                    img_dict['label'].append(label_)
+                    img_dict['name'].append(image_name)
+            X_df = pd.DataFrame(img_dict)
+            X_df.to_csv(sampling_save_path)
+        
         name_dict = defaultdict(str)
         for idx, name in enumerate(X_df["name"]):
             name_dict[idx] = name
@@ -235,12 +242,110 @@ def sampling_images(paths, sampling):
 
         # 이미지 이름 찾기 
         X_under['name'] = X_under['name'].apply(lambda x : name_dict[x])
+        X_under = pd.concat([X_under,y_under],axis=1)
         X_under.drop_duplicates()# 중복 제거 
-
+        
         # 결과 저장 
-        for img_path in X_under['name'] :
-          paths2.append(img_path)
+        for img_path, label_ in zip(X_under['name'], X_under['label']):
+          paths2.append(pre_paths + label_+ "\\" + img_path)
         return paths2
+
+    if sampling.lower().strip() == "nearmiss_top3" :
+        sampling_save_path = 'sampling_rgb_24x24x3_df.csv'
+        if os.path.exists(sampling_save_path):
+            X_df = pd.read_csv(sampling_save_path, index_col=0)
+        else:
+            img_dict = defaultdict(list)
+            for label_ in label_imgs.keys():
+                for image_name in label_imgs[label_]:
+                    img_array = np.fromfile(pre_paths + label_+ "\\" +image_name, np.uint8)
+                    img = cv2.imdecode(img_array, cv2.IMREAD_REDUCED_COLOR_4) # 24 * 4 = 96인데 가장 작은 값이 98임으로
+                    img = cv2.cvtColor(img,cv2.COLOR_BGR2RGB)
+                    img2 = cv2.resize(img, (24, 24)) # 사이즈 조절 이미지 (w , h)
+                    cnt = 0
+                    for i in img2: # 
+                        for j in i :
+                            img_dict[cnt].append((np.mean(j)))
+                            cnt += 1
+                    img_dict['label'].append(label_)
+                    img_dict['name'].append(image_name)
+            X_df = pd.DataFrame(img_dict)
+            X_df.to_csv(sampling_save_path)
+        
+        
+        top_label_3 = list(X_df['label'].value_counts().sort_values().index[-3:])
+        top_3_df = X_df[(X_df['label'] == top_label_3[0]) |(X_df['label'] == top_label_3[1]) |(X_df['label'] == top_label_3[2])] # top 3 
+        remain_df = X_df.drop(index=top_3_df.index) # 나머지 
+
+        name_dict = defaultdict(str)
+        for idx, name in enumerate(top_3_df["name"]):
+            name_dict[idx] = name
+        top_3_df['name'] = name_dict.keys()
+
+        # 언더 샘플링   
+        X = top_3_df.drop(columns=['label'], axis = 1)
+        y = top_3_df['label']
+        undersample = NearMiss(version = 1, n_neighbors = 3)
+        X_under, y_under = undersample.fit_resample(X, y)
+
+        # 이미지 이름 찾기 
+        X_under['name'] = X_under['name'].apply(lambda x : name_dict[x])
+        X_under = pd.concat([X_under,y_under],axis=1)
+        X_under.drop_duplicates()# 중복 제거 
+        
+        # top3 결과 저장 
+        for img_name, label_ in zip(X_under['name'], X_under['label']):
+          paths2.append(pre_paths + label_+ "\\" + img_name)
+        # 나머지 결과 저장 
+        for img_name, label_ in zip(remain_df['name'], remain_df['label']):
+          paths2.append(pre_paths + label_+ "\\" + img_name)  
+        return paths2
+
+    if sampling.lower().strip() == "nearmiss_realimg" :
+
+        sampling_save_path = 'sampling_rgb_24x24x3_mean_realimg_df.csv'
+
+        if os.path.exists(sampling_save_path):
+            X_df = pd.read_csv(sampling_save_path, index_col=0)
+        else:
+            img_dict = defaultdict(list)
+            for label_ in label_imgs.keys():
+                for image_name in label_imgs[label_]:
+                    img_array = np.fromfile(pre_paths + label_+ "\\" +image_name, np.uint8)
+                    img = cv2.imdecode(img_array, cv2.IMREAD_REDUCED_COLOR_4) # 24 * 4 = 96인데 가장 작은 값이 98임으로
+                    img = cv2.cvtColor(img,cv2.COLOR_BGR2RGB)
+                    img2 = cv2.resize(img, (24, 24)) # 사이즈 조절 이미지 (w , h)
+                    cnt = 0
+                    for i in img2: # 
+                        for j in i :
+                            img_dict[cnt].append(int(np.mean(j)))
+                            cnt += 1
+                    img_dict['label'].append(label_)
+                    img_dict['name'].append(image_name)
+            X_df = pd.DataFrame(img_dict)
+            X_df.to_csv(sampling_save_path)
+        
+        name_dict = defaultdict(str)
+        for idx, name in enumerate(X_df["name"]):
+            name_dict[idx] = name
+        X_df['name'] = name_dict.keys()
+
+        # 언더 샘플링   
+        X = X_df.drop(columns=['label'], axis = 1)
+        y = X_df['label']
+        undersample = NearMiss(version = 1, n_neighbors = 3)
+        X_under, y_under = undersample.fit_resample(X, y)
+
+        # 이미지 이름 찾기 
+        X_under['name'] = X_under['name'].apply(lambda x : name_dict[x])
+        X_under = pd.concat([X_under,y_under],axis=1)
+        X_under.drop_duplicates()# 중복 제거 
+        
+        # 결과 저장 
+        for img_path, label_ in zip(X_under['name'], X_under['label']):
+          paths2.append(pre_paths + label_+ "\\" + img_path)
+        return paths2
+
     return paths
 
 
