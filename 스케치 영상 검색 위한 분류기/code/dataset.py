@@ -344,7 +344,7 @@ def load_data(datadir, dup_sim, sampling, crop, only_illust):
             paths = [path.replace(datadir, crop_path) for path in paths]
 
     if sampling is not None:
-        paths = sampling_images(paths)
+        paths = sampling_images(paths,sampling)
 
     print(f"{len(paths)} data has been set")
     names = [re.findall('[a-z]+[.][a-z]+', path)[0] for path in paths]
