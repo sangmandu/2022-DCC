@@ -18,6 +18,7 @@ import multiprocessing
 import click
 import os
 import wandb
+from sklearn.metrics import classification_report
 import warnings
 
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -62,6 +63,7 @@ os.environ['WANDB_SILENT'] = "true"
 @click.option('--save_limit',   help='# of saved models',                   metavar='INT',      type=click.IntRange(min=1),                 default=2           )
 @click.option('--seed',         help='Random seed',                         metavar='INT',      type=click.IntRange(min=0),                 default=0           )
 @click.option('--use_wandb',    help='Wandb',                               metavar='BOOL',     is_flag=True)
+@click.option('--f1_score_report',    help='f1_score_report',                               metavar='BOOL',     is_flag=True)
 
 
 def main(**kwargs):
@@ -80,7 +82,8 @@ def main(**kwargs):
             config=opts,
             # reinit=True,
         )
-
+    if not os.path.exists("./f1_score"):
+        os.makedirs("./f1_score")
     ## Path Settings
     opts.save_name = check_paths(opts.outdir, opts.model_name, opts.save_name)
 
@@ -218,6 +221,7 @@ def train(df, model, criterion, optimizer, scheduler, opts):
         train_batch_accuracy = []
         train_batch_f1 = []
 
+
         train_pbar = tqdm(train_loader, total=len(train_loader))
         for idx, (names, inputs, labels) in enumerate(train_pbar):
             inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
@@ -247,6 +251,7 @@ def train(df, model, criterion, optimizer, scheduler, opts):
                 f1
             )
 
+
             train_pbar.set_description(
                 f'Epoch #{epoch+1:2.0f} | '
                 f'train | f1 : {train_batch_f1[-1]:.5f} | accuracy : {train_batch_accuracy[-1]:.5f} | '
@@ -268,6 +273,9 @@ def train(df, model, criterion, optimizer, scheduler, opts):
             valid_batch_loss = []
             valid_batch_accuracy = []
             valid_batch_f1 = []
+            if opts.f1_score_report:
+                classification_report_y_pred = np.array([])
+                classification_report_label = np.array([])
 
             # figure = None
             valid_pbar = tqdm(valid_loader, total=len(valid_loader))
@@ -287,6 +295,9 @@ def train(df, model, criterion, optimizer, scheduler, opts):
                 valid_batch_f1.append(
                     f1
                 )
+                if opts.f1_score_report:
+                    classification_report_y_pred = np.append(classification_report_y_pred, preds.cpu().numpy().squeeze())  
+                    classification_report_label = np.append(classification_report_label, labels.cpu().numpy().squeeze())
 
                 valid_pbar.set_description(
                     f'valid | f1 : {valid_batch_f1[-1]:.5f} | accuracy : {valid_batch_accuracy[-1]:.5f} | '
@@ -308,6 +319,8 @@ def train(df, model, criterion, optimizer, scheduler, opts):
             best_valid_acc = max(best_valid_acc, valid_item[1])
             best_valid_f1 = max(best_valid_f1, valid_item[2])
             cur_f1 = valid_item[2]
+            with open(f"./f1_score/{opts.model_name}-f1 score_report-epoch{epoch}.txt", "w") as text_file:
+               print(classification_report(classification_report_label, classification_report_y_pred), file=text_file)
 
             if cur_f1 >= best_valid_f1:
                 if cur_f1 == best_valid_f1:
