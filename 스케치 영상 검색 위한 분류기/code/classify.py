@@ -60,8 +60,8 @@ os.environ['WANDB_SILENT'] = "true"
 @click.option('--check_stat',   help='computing image mean and std',        metavar='BOOL',     is_flag=True)
 @click.option('--only_illust',  help='train only illustration image or not',metavar='BOOL',     type=bool,                                  default=True)
 @click.option('--oversampling',     help='use oversampling for enhancement',      metavar='BOOL',     is_flag=True)
-@click.option('--over_iter',  type=click.IntRange(min=0), multiple=True, default=['localhost'])
-@click.option('--over_label', type=click.IntRange(min=0), multiple=True, default=['localhost'])
+@click.option('--over_iter',  type=click.IntRange(min=0), multiple=True, default=[])
+@click.option('--over_label', type=click.IntRange(min=0), multiple=True, default=[])
 
 
 
