@@ -21,6 +21,8 @@ import wandb
 from sklearn.metrics import classification_report
 import warnings
 
+from torch.utils.data import DataLoader, ConcatDataset
+
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 warnings.filterwarnings(action='ignore')
 
@@ -57,6 +59,11 @@ os.environ['WANDB_SILENT'] = "true"
 @click.option('--use_crop',     help='use crop image for enhancement',      metavar='BOOL',     is_flag=True)
 @click.option('--check_stat',   help='computing image mean and std',        metavar='BOOL',     is_flag=True)
 @click.option('--only_illust',  help='train only illustration image or not',metavar='BOOL',     type=bool,                                  default=True)
+@click.option('--oversampling',     help='use oversampling for enhancement',      metavar='BOOL',     is_flag=True)
+@click.option('--over_iter',  type=click.IntRange(min=0), multiple=True, default=['localhost'])
+@click.option('--over_label', type=click.IntRange(min=0), multiple=True, default=['localhost'])
+
+
 
 # Misc settings.
 @click.option('--save_name',    help='Name of model when saved',            metavar='STR',      type=str,                                   default='experiment')
@@ -147,29 +154,35 @@ def main(**kwargs):
 
 
 def train(df, model, criterion, optimizer, scheduler, opts):
-    '''
 
-    :param df:
-    :param model:
-    :param criterion:
-    :param optimizer:
-    :param opts:
-    :param paths:
-    :return:
-    '''
-
-    ## Wandb
-    '''추후 구현'''
-
-    ## Stratified K-Fold
-    ''' 추후 구현'''
     train_df, eval_df = train_test_split(df, test_size=opts.val_ratio + opts.test_ratio, stratify=df[['label']])
     # valid_df, test_df = train_test_split(eval_df, test_size=opts.val_ratio, stratify=eval_df[['label']])
 
     ## Dataset
-    train_dataset = Dataset(train_df, resize=opts.resize, aug=opts.aug)
+    i = 0
+    if opts.oversampling:      # **oversampling 시킬건지에 대한 인자**
+
+        train_df_over_need = train_df[train_df['label'].isin(opts.over_label)] # 라벨의 oversampling이 필요한 df    #**opts.arr는 oversampling이 필요한 라벨을 모아둔 list**
+        train_df_over_not_need = train_df[~train_df['label'].isin(opts.over_label)] # 라벨 oversampling이 필요하지 않은 df
+
+        train_dataset_over_need = Dataset(train_df_over_need, resize=opts.resize, aug=False)
+        train_dataset_over_not_need = Dataset(train_df_over_not_need, resize=opts.resize, aug=True)
+        train_dataset = torch.utils.data.ConcatDataset([train_dataset_over_need, train_dataset_over_not_need])
+
+        for label in opts.over_label:
+            tmp = train_df[train_df['label'] == label]
+
+            for _ in range(opts.over_iter[i]):
+                tmp_dataset = Dataset(tmp, resize=opts.resize, aug=True)
+                train_dataset = torch.utils.data.ConcatDataset([train_dataset, tmp_dataset])
+            i += 1
+
+    else:
+        train_dataset = Dataset(train_df, resize=opts.resize, aug=opts.aug)
+
     valid_dataset = Dataset(eval_df, resize=opts.resize, aug=False)
     # test_dataset = Dataset(test_df, resize=opts.resize, aug=False)
+
 
     ## check image stats
     if opts.check_stat:
@@ -220,7 +233,6 @@ def train(df, model, criterion, optimizer, scheduler, opts):
         train_batch_loss = []
         train_batch_accuracy = []
         train_batch_f1 = []
-
 
         train_pbar = tqdm(train_loader, total=len(train_loader))
         for idx, (names, inputs, labels) in enumerate(train_pbar):
@@ -359,5 +371,3 @@ def train(df, model, criterion, optimizer, scheduler, opts):
 
 if __name__ == '__main__':
     main()
-
-
