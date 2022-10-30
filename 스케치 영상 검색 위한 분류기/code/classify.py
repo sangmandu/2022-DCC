@@ -305,8 +305,10 @@ def train(df, model, criterion, optimizer, scheduler, opts):
             best_valid_acc = max(best_valid_acc, valid_item[1])
             best_valid_f1 = max(best_valid_f1, valid_item[2])
             cur_f1 = valid_item[2]
-            with open(f"./f1_score/{opts.model_name}-f1 score_report-epoch{epoch}.txt", "w") as text_file:
-               print(classification_report(classification_report_label, classification_report_y_pred), file=text_file)
+
+            if opts.f1_score_report:
+                with open(f"./f1_score/{opts.model_name}-f1 score_report-epoch{epoch}.txt", "w") as text_file:
+                   print(classification_report(classification_report_label, classification_report_y_pred), file=text_file)
 
             if cur_f1 >= best_valid_f1:
                 if cur_f1 == best_valid_f1:
