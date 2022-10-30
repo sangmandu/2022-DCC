@@ -3,6 +3,8 @@ data/
 *.pth
 wandb/
 dataCropped/
+testdata/
+*.zip
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
