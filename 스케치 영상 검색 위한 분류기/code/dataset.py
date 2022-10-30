@@ -333,6 +333,7 @@ def load_data(datadir, dup_sim, sampling, crop, only_illust):
 
     labelobj = re.compile('L2_([0-9]+)')
     label_to_num = {re.findall(labelobj, path)[0]: num for num, path in enumerate(glob(os.path.join(datadir, '*')))}
+    print(label_to_num)
 
     paths = [image_path for image_path in glob(os.path.join(datadir, '*', '*'))]
 

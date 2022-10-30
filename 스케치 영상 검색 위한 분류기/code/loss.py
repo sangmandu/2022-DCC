@@ -86,14 +86,15 @@ class SymmetricCrossEntropyLoss(nn.Module):
         return self.alpha * ce_loss + self.beta * rce_loss
 
 
+DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 _criterion_entrypoints = {
-    'cross_entropy': nn.CrossEntropyLoss,
-    'focal': FocalLoss,
-    'label_smoothing': LabelSmoothingLoss,
-    'f1': F1Loss,
-    'weight_cross_entropy': nn.CrossEntropyLoss,
-    'symmetric': SymmetricCrossEntropyLoss,
-    'BCELoss': nn.BCELoss
+    'cross_entropy': (nn.CrossEntropyLoss, {}),
+    'focal': (FocalLoss, {}),
+    'label_smoothing': (LabelSmoothingLoss, {}),
+    'f1': (F1Loss, {}),
+    'weight_cross_entropy': (nn.CrossEntropyLoss, {'weight': torch.FloatTensor([]).to(DEVICE), 'reduction': 'mean'}),
+    'symmetric': (SymmetricCrossEntropyLoss, {}),
+    'BCELoss': (nn.BCELoss, {}),
 }
 
 
@@ -109,8 +110,8 @@ def is_criterion(criterion_name):
 # criterion 생성
 def create_criterion(criterion_name, **kwargs):
     if is_criterion(criterion_name):
-        create_fn = criterion_entrypoint(criterion_name)
-        criterion = create_fn(**kwargs)
+        create_fn, kwargs = criterion_entrypoint(criterion_name)
+        criterion = create_fn(**kwargs) if kwargs else create_fn()
     else:
         raise RuntimeError('Unknown loss (%s)' % criterion_name)
     return criterion

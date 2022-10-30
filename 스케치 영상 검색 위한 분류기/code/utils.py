@@ -1,6 +1,7 @@
 from glob import glob
 from tqdm import tqdm
 from PIL import Image
+from importlib import import_module
 
 import subprocess as sp
 import numpy as np
@@ -49,6 +50,63 @@ def set_seed(seed):
 #         plt.imshow(image, cmap=plt.cm.binary)
 
     # return figure
+
+def get_model(model_name, resize):
+    if model_name == 'BaseModel':
+        model_module = getattr(import_module('.'.join(['models', model_name, 'model'])), model_name)
+        model = model_module(
+            num_classes=20
+        )
+    elif model_name == 'EfficientNet':
+        model_module = getattr(import_module('.'.join(['models', model_name, 'model'])), model_name)
+        model = model_module.from_name(
+            model_name='efficientnet-b0',
+            image_size=resize,
+            num_classes=20,
+        )
+    else:
+        raise Exception("model name is incorrect")
+
+    return model
+
+
+def get_optimizer(optimizer_name, lr, model):
+    opt_module = getattr(import_module("torch.optim"), optimizer_name)
+    optimizer = opt_module(
+        filter(lambda p: p.requires_grad, model.parameters()),
+        lr=lr,
+        weight_decay=5e-4,
+    )
+
+    return optimizer
+
+
+# https://sanghyu.tistory.com/113
+def get_scheduler(scheduler_name, lr, batch_size, base_step, optimizer):
+    sch_module = getattr(import_module("torch.optim.lr_scheduler"), scheduler_name)
+    if scheduler_name == 'CyclicLR':
+        scheduler = sch_module(
+            optimizer,
+            base_lr=5e-5,
+            max_lr=lr,
+            step_size_down=4,
+            step_size_up=2,
+            cycle_momentum=False,
+            mode="triangular"
+        )
+    elif scheduler_name == 'CosineAnnealingLR':
+        scheduler = sch_module(
+            optimizer,
+            T_max=100,
+            eta_min=0
+        )
+    elif scheduler_name == 'St':
+        scheduler = sch_module(
+            optimizer,
+            step_size=10,
+            gamma=0.5
+        )
+    return scheduler
 
 
 def get_lr(optimizer):

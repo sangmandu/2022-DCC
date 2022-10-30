@@ -3,7 +3,7 @@ from utils import *
 from loss import create_criterion
 
 from easydict import EasyDict
-from importlib import import_module
+
 from glob import glob
 from tqdm import tqdm
 
@@ -31,6 +31,7 @@ os.environ['WANDB_WATCH'] = 'all'
 os.environ['WANDB_SILENT'] = "true"
 
 
+
 @click.command()
 
 # Required.
@@ -39,16 +40,15 @@ os.environ['WANDB_SILENT'] = "true"
 @click.option('--model_name',   help='Model name to train',                 metavar='STR',      type=str,           required=True)
 
 # Optional features.
-@click.option('--resize',       help='How much to resize',                  metavar='INT',      type=click.IntRange(min=1),                 default=64)
-@click.option('--batch_size',   help='Total batch size',                    metavar='INT',      type=click.IntRange(min=1),                 default=512)
-@click.option('--epochs',       help='Epochs',                              metavar='INT',      type=click.IntRange(min=1),                 default=25)
+@click.option('--resize',       help='How much to resize',                  metavar='INT',      type=click.IntRange(min=1),                 default=128)
+@click.option('--batch_size',   help='Total batch size',                    metavar='INT',      type=click.IntRange(min=1),                 default=256)
+@click.option('--epochs',       help='Epochs',                              metavar='INT',      type=click.IntRange(min=1),                 default=30)
 @click.option('--fold',         help='Whether to apply cross fold',         metavar='BOOL',     is_flag=True)
-@click.option('--lr',           help='Learning rate',                       metavar='FLOAT',    type=click.FloatRange(min=0),               default=1e-2)
-@click.option('--optimizer',    help='Optimizer ',                          metavar='STR',      type=str,                                   default='Adam')
+@click.option('--lr',           help='Learning rate',                       metavar='FLOAT',    type=click.FloatRange(min=0),               default=5e-3)
+@click.option('--optimizer',    help='Optimizer ',                          metavar='STR',      type=str,                                   default='AdamW')
 @click.option('--scheduler',    help='Scheduler',                           metavar='STR',      type=str,                                   default='CyclicLR')
 @click.option('--criterion',    help='Loss function',                       metavar='STR',      type=str,                                   default='cross_entropy')
 @click.option('--val_ratio',    help='Proportion of valid dataset',         metavar='FLOAT',    type=click.FloatRange(),                    default=0.2)
-@click.option('--test_ratio',   help='Proportion of test dataset',          metavar='FLOAT',    type=click.FloatRange(),                    default=0)
 @click.option('--checkpoint',   help='checkpoint path',                     metavar='DIR',      type=str,                                   default='')
 
 # Image settings.
@@ -67,10 +67,11 @@ os.environ['WANDB_SILENT'] = "true"
 
 # Misc settings.
 @click.option('--save_name',    help='Name of model when saved',            metavar='STR',      type=str,                                   default='experiment')
-@click.option('--save_limit',   help='# of saved models',                   metavar='INT',      type=click.IntRange(min=1),                 default=2           )
-@click.option('--seed',         help='Random seed',                         metavar='INT',      type=click.IntRange(min=0),                 default=0           )
+@click.option('--save_limit',   help='# of saved models',                   metavar='INT',      type=click.IntRange(min=1),                 default=2)
+@click.option('--seed',         help='Random seed',                         metavar='INT',      type=click.IntRange(min=0),                 default=0)
 @click.option('--use_wandb',    help='Wandb',                               metavar='BOOL',     is_flag=True)
 @click.option('--f1_score_report',    help='f1_score_report',                               metavar='BOOL',     is_flag=True)
+
 
 
 def main(**kwargs):
@@ -98,30 +99,10 @@ def main(**kwargs):
     df = load_data(opts.datadir, opts.dup_sim, opts.sampling, opts.use_crop, opts.only_illust)
 
     ## Loss Function
-    if opts.criterion == 'weight_cross_entropy':
-        criterion = create_criterion(
-            criterion_name=opts.criterion,
-            weight=torch.FloatTensor([]).to(DEVICE),
-            reduction='mean',
-        )
-    else:
-        criterion = create_criterion(criterion_name=opts.criterion)
+    criterion = create_criterion(opts.criterion)
 
     ## Model
-    if opts.model_name == 'BaseModel':
-        model_module = getattr(import_module('.'.join(['models', opts.model_name, 'model'])), opts.model_name)
-        model = model_module(
-            num_classes=20
-        ).to(DEVICE)
-    elif opts.model_name == 'EfficientNet':
-        model_module = getattr(import_module('.'.join(['models', opts.model_name, 'model'])), opts.model_name)
-        model = model_module.from_name(
-            model_name='efficientnet-b0',
-            image_size=opts.resize,
-            num_classes=20,
-        ).to(DEVICE)
-    else:
-        raise Exception("model name is incorrect")
+    model = get_model(opts.model_name, opts.resize).to(DEVICE)
 
     ## Checkpoint
     if opts.checkpoint:
@@ -129,24 +110,12 @@ def main(**kwargs):
         model.load_state_dict(torch.load(opts.checkpoint))
 
     ## Optimizer
-    opt_module = getattr(import_module("torch.optim"), opts.optimizer)  # default: Adam
-    optimizer = opt_module(
-        filter(lambda p: p.requires_grad, model.parameters()),
-        lr=opts.lr,
-        # weight_decay=5e-4,
-    )
+    optimizer = get_optimizer(opts.optimizer, opts.lr, model) # default: Adam
 
     ## Scheduler
-    ''' scheduler.py에 추후 개발 필요'''
-    base_step = int(len(df) * (1 - opts.val_ratio - opts.test_ratio))
-    scheduler = CyclicLR(
-        optimizer,
-        base_lr=1e-5,
-        max_lr=opts.lr,
-        step_size_down=base_step * 2 // opts.batch_size,
-        step_size_up=base_step // opts.batch_size,
-        cycle_momentum=False,
-        mode="triangular")
+    base_step = int(len(df) * (1 - opts.val_ratio))
+    # scheduler = get_scheduler(opts.scheduler, opts.lr, opts.batch_size, base_step, optimizer)
+    scheduler = None
 
     ## Train
     print("Start training")
@@ -154,9 +123,23 @@ def main(**kwargs):
 
 
 def train(df, model, criterion, optimizer, scheduler, opts):
+    '''
 
-    train_df, eval_df = train_test_split(df, test_size=opts.val_ratio + opts.test_ratio, stratify=df[['label']])
-    # valid_df, test_df = train_test_split(eval_df, test_size=opts.val_ratio, stratify=eval_df[['label']])
+    :param df:
+    :param model:
+    :param criterion:
+    :param optimizer:
+    :param opts:
+    :param paths:
+    :return:
+    '''
+
+    ## Wandb
+    '''추후 구현'''
+
+    ## Stratified K-Fold
+    ''' 추후 구현'''
+    train_df, eval_df = train_test_split(df, test_size=opts.val_ratio, stratify=df[['label']])
 
     ## Dataset
     i = 0
@@ -181,7 +164,6 @@ def train(df, model, criterion, optimizer, scheduler, opts):
         train_dataset = Dataset(train_df, resize=opts.resize, aug=opts.aug)
 
     valid_dataset = Dataset(eval_df, resize=opts.resize, aug=False)
-    # test_dataset = Dataset(test_df, resize=opts.resize, aug=False)
 
 
     ## check image stats
@@ -211,15 +193,6 @@ def train(df, model, criterion, optimizer, scheduler, opts):
         pin_memory=True,
         # drop_last=True,
     )
-
-    # test_loader = DataLoader(
-    #     dataset=test_dataset,
-    #     batch_size=opts.batch_size,
-    #     num_workers=multiprocessing.cpu_count() // 3,
-    #     shuffle=False,
-    #     pin_memory=True,
-    #     # drop_last=True,
-    # )
 
 
     ## train
@@ -270,7 +243,7 @@ def train(df, model, criterion, optimizer, scheduler, opts):
                 f'loss : {train_batch_loss[-1]:.5f} | lr : {get_lr(optimizer):.7f}'
             )
 
-        scheduler.step()
+        # scheduler.step()
 
         train_item = (sum(train_batch_loss) / len(train_loader),
                       sum(train_batch_accuracy) / len(train_loader),
@@ -307,6 +280,7 @@ def train(df, model, criterion, optimizer, scheduler, opts):
                 valid_batch_f1.append(
                     f1
                 )
+
                 if opts.f1_score_report:
                     classification_report_y_pred = np.append(classification_report_y_pred, preds.cpu().numpy().squeeze())  
                     classification_report_label = np.append(classification_report_label, labels.cpu().numpy().squeeze())
@@ -356,17 +330,20 @@ def train(df, model, criterion, optimizer, scheduler, opts):
             )
             print()
 
-            wandb.log({
-                "train_loss": train_item[0],
-                "train_acc": train_item[1],
-                "train_f1": train_item[2],
-                "best_train_f1": best_train_f1,
+            if opts.use_wandb:
+                wandb.log({
+                    "train_loss": train_item[0],
+                    "train_acc": train_item[1],
+                    "train_f1": train_item[2],
+                    "best_train_f1": best_train_f1,
 
-                "valid_loss": valid_item[0],
-                "valid_acc": valid_item[1],
-                "valid_f1": valid_item[2],
-                "best_valid_f1": best_valid_f1,
-            })
+                    "valid_loss": valid_item[0],
+                    "valid_acc": valid_item[1],
+                    "valid_f1": valid_item[2],
+                    "best_valid_f1": best_valid_f1,
+
+                    "lr": get_lr(optimizer)
+                })
 
 
 if __name__ == '__main__':
