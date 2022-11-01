@@ -37,7 +37,7 @@ os.environ['WANDB_SILENT'] = "true"
 @click.option('--model_name',   help='Model name to train',                 metavar='STR',      type=str,           required=True)
 @click.option('--checkpoint',   help='checkpoint name',                     metavar='DIR',      type=str,           required=True)
 
-@click.option('--schetch',      help='Include schetch data',                metavar='BOOL',     is_flag=True)
+@click.option('--only_illust',  help='Include schetch data',                metavar='BOOL',     type=bool,          default=True)
 @click.option('--resize',       help='How much to resize',                  metavar='INT',      type=click.IntRange(min=1),                 default=128)
 @click.option('--batch_size',   help='Total batch size',                    metavar='INT',      type=click.IntRange(min=1),                 default=256)
 
@@ -51,13 +51,12 @@ def main(**kwargs):
     print(label_to_num)
 
     paths = [image_path for image_path in glob(os.path.join(opts.datadir, '*', '*'))]
-    if not opts.schetch:
-        paths = [path for path in paths if 's_' not in path]
+    if opts.only_illust:
+        paths = [path for path in paths if 's_' not in path and 'p_' not in path]
 
     print(f"{len(paths)} data has been set")
 
-
-    names = [re.findall('([isp]_.+)[.]jpg|([isp].+)[.]png', path)[0] for path in paths]
+    names = [re.findall('([i].+)[.]jpg|([i].+)[.]png', path)[0][0] for path in paths]
     labels = [label_to_num[re.findall(labelobj, path)[0]] for path in paths]
 
     df = pd.DataFrame(
@@ -65,7 +64,7 @@ def main(**kwargs):
         columns=['name', 'path', 'label']
     )
 
-    test_dataset = Dataset(df, resize=opts.resize)
+    test_dataset = Dataset(df, resize=opts.resize, aug=True)
     test_loader = DataLoader(
         dataset=test_dataset,
         batch_size=opts.batch_size,
