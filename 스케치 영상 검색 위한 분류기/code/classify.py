@@ -11,7 +11,7 @@ from sklearn.metrics import f1_score
 from sklearn.model_selection import train_test_split, StratifiedKFold
 
 from torch.optim.lr_scheduler import StepLR, CyclicLR
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, SubsetRandomSampler
 import torch
 
 import multiprocessing
@@ -71,7 +71,7 @@ os.environ['WANDB_SILENT'] = "true"
 @click.option('--seed',         help='Random seed',                         metavar='INT',      type=click.IntRange(min=0),                 default=0)
 @click.option('--use_wandb',    help='Wandb',                               metavar='BOOL',     is_flag=True)
 @click.option('--f1_score_report',    help='f1_score_report',                               metavar='BOOL',     is_flag=True)
-
+@click.option('--kind',    help='test_aug',                                 metavar='STR',     type=str,                               default='')
 
 
 def main(**kwargs):
@@ -119,7 +119,10 @@ def main(**kwargs):
 
     ## Train
     print("Start training")
-    train(df, model, criterion, optimizer, scheduler, opts)
+    if opts.fold:
+        train_fold(df, model, criterion, optimizer, scheduler, opts)
+    else:
+        train(df, model, criterion, optimizer, scheduler, opts)
 
 
 def train(df, model, criterion, optimizer, scheduler, opts):
@@ -161,7 +164,8 @@ def train(df, model, criterion, optimizer, scheduler, opts):
             i += 1
 
     else:
-        train_dataset = Dataset(train_df, resize=opts.resize, aug=opts.aug)
+        # train_dataset = Dataset(train_df, resize=opts.resize, aug=opts.aug)
+        train_dataset = Dataset(train_df, resize=opts.resize, aug=opts.aug, kind=opts.kind)
 
     valid_dataset = Dataset(eval_df, resize=opts.resize, aug=False)
 
@@ -346,6 +350,216 @@ def train(df, model, criterion, optimizer, scheduler, opts):
 
                     "lr": get_lr(optimizer)
                 })
+def train_fold(df, model, criterion, optimizer,scheduler, opts):
+    KFold = 5
+    splitter = StratifiedKFold(n_splits=KFold, shuffle=True, random_state=0)
+    
+    # For fold results
+    results = {}
+    
+    for fold, (train_ids, test_ids) in enumerate(splitter.split(df['path'], df['label'])):
+        
+        # Print
+        print(f'FOLD {fold}')
+        print('--------------------------------')
+        
+        
+        # Sample elements randomly from a given list of ids, no replacement.
+        train_subsampler = SubsetRandomSampler(train_ids)
+        valid_subsampler = SubsetRandomSampler(test_ids)
+        
+        train_dataset = Dataset(df, resize=opts.resize, aug=opts.aug, kind=opts.kind)
+        valid_dataset = Dataset(df, resize=opts.resize, aug=False)
+        ## DataLoader
+        train_loader = DataLoader(
+            dataset=train_dataset,
+            batch_size=opts.batch_size,
+            num_workers=multiprocessing.cpu_count() // 3,
+            # shuffle=True,
+            pin_memory=True,
+            drop_last=True,
+            sampler=train_subsampler
+        )
+
+        valid_loader = DataLoader(
+            dataset=valid_dataset,
+            batch_size=opts.batch_size,
+            num_workers=multiprocessing.cpu_count() // 3,
+            # shuffle=False,
+            pin_memory=True,
+            # drop_last=True,
+            sampler=valid_subsampler
+        )
+        ## reset_weights
+        model.apply(reset_weights)
+        ## train
+        best_train_acc = best_valid_acc = 0
+        best_train_loss = best_valid_loss = np.inf
+        best_train_f1 = best_valid_f1 = 0
+        for epoch in range(opts.epochs):
+            model.train()
+            if opts.f1_score_report:
+                classification_report_y_pred = np.array([])
+                classification_report_label = np.array([])
+
+            train_batch_loss = []
+            train_batch_accuracy = []
+            train_batch_f1 = []
+            train_pbar = tqdm(train_loader, total=len(train_loader))
+            for idx, (names, inputs, labels) in enumerate(train_pbar):
+                inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
+
+                if np.random.random() < opts.cutmix:
+                    inputs, labels_a, labels_b, mix_ratio = cutmix(inputs, labels)
+                    outs = model(inputs)
+                    loss = criterion(outs, labels_a) * mix_ratio + criterion(outs, labels_b) * (1. - mix_ratio)
+                else:
+                    outs = model(inputs)
+                    loss = criterion(outs, labels)
+
+                preds = torch.argmax(outs, dim=-1)
+
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+
+                train_batch_loss.append(
+                    loss.item()
+                )
+                train_batch_accuracy.append(
+                    (preds == labels).sum().item() / opts.batch_size
+                )
+                f1 = f1_score(preds.cpu().numpy(), labels.cpu().numpy(), average='micro')
+                train_batch_f1.append(
+                    f1
+                )
+                if opts.f1_score_report:
+                    classification_report_y_pred = np.append(classification_report_y_pred, preds.cpu().numpy().squeeze())  
+                    classification_report_label = np.append(classification_report_label, labels.cpu().numpy().squeeze())
+
+
+                train_pbar.set_description(
+                    f'Epoch #{epoch+1:2.0f} | '
+                    f'train | f1 : {train_batch_f1[-1]:.5f} | accuracy : {train_batch_accuracy[-1]:.5f} | '
+                    f'loss : {train_batch_loss[-1]:.5f} | lr : {get_lr(optimizer):.7f}'
+                )
+                
+
+            # scheduler.step()
+            train_item = (sum(train_batch_loss) / len(train_loader),
+                        sum(train_batch_accuracy) / len(train_loader),
+                        sum(train_batch_f1) / len(train_loader))
+            best_train_loss = min(best_train_loss, train_item[0])
+            best_train_acc = max(best_train_acc, train_item[1])
+            best_train_f1 = max(best_train_f1, train_item[2])
+            if opts.f1_score_report:
+                with open(f"./f1_score_train/{opts.model_name}-f1 score_report-epoch{epoch}.txt", "w") as text_file:
+                    print(classification_report(classification_report_label, classification_report_y_pred), file=text_file)
+            
+            correct, total = 0, 0
+            with torch.no_grad():
+                model.eval()
+
+                valid_batch_loss = []
+                valid_batch_accuracy = []
+                valid_batch_f1 = []
+                if opts.f1_score_report:
+                    classification_report_y_pred = np.array([])
+                    classification_report_label = np.array([])
+
+                # figure = None
+                valid_pbar = tqdm(valid_loader, total=len(valid_loader))
+                for (names, inputs, labels) in valid_pbar:
+                    inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
+
+                    outs = model(inputs)
+                    preds = torch.argmax(outs, dim=-1)
+                    #################################################################
+                    # Set total and correct
+                    _, predicted = torch.max(outs.data, 1)
+                    total += labels.size(0)
+                    correct += (predicted == labels).sum().item()
+                    results[fold] = 100.0 * (correct / total)
+                    #################################################################
+                    valid_batch_loss.append(
+                        criterion(outs, labels).item()
+                    )
+                    valid_batch_accuracy.append(
+                        (labels == preds).sum().item() / opts.batch_size
+                    )
+                    f1 = f1_score(preds.cpu().numpy(), labels.cpu().numpy(), average='micro')
+                    valid_batch_f1.append(
+                        f1
+                    )
+                    if opts.f1_score_report:
+                        classification_report_y_pred = np.append(classification_report_y_pred, preds.cpu().numpy().squeeze())  
+                        classification_report_label = np.append(classification_report_label, labels.cpu().numpy().squeeze())
+
+                    valid_pbar.set_description(
+                        f'valid | f1 : {valid_batch_f1[-1]:.5f} | accuracy : {valid_batch_accuracy[-1]:.5f} | '
+                        f'loss : {valid_batch_loss[-1]:.5f} | lr : {get_lr(optimizer):.7f}'
+                    )
+
+                    # 시각화를 위해 나중에 개발
+                    # if figure is None:
+                    #     inputs_np = torch.clone(inputs).detach().cpu().permute(0, 2, 3, 1).numpy()
+                    #     inputs_np = valid_dataset.denormalize_image(inputs_np, valid_dataset.mean, valid_dataset.std)
+                    #     figure = grid_image(
+                    #         inputs_np, labels, preds, n=16, shuffle=True
+                    #     )
+
+                valid_item = (sum(valid_batch_loss) / len(valid_loader),
+                            sum(valid_batch_accuracy) / len(valid_loader),
+                            sum(valid_batch_f1) / len(valid_loader))
+                best_valid_loss = min(best_valid_loss, valid_item[0])
+                best_valid_acc = max(best_valid_acc, valid_item[1])
+                best_valid_f1 = max(best_valid_f1, valid_item[2])
+                cur_f1 = valid_item[2]
+                if opts.f1_score_report:
+                    with open(f"./f1_score/{opts.model_name}-f1 score_report-epoch{epoch}.txt", "w") as text_file:
+                        print(classification_report(classification_report_label, classification_report_y_pred), file=text_file)
+
+                if cur_f1 >= best_valid_f1:
+                    if cur_f1 == best_valid_f1:
+                        print(f"New best model for valid f1 : {cur_f1:.5%}! saving the best model..")
+                        torch.save(model.state_dict(), f"{opts.save_name}_{cur_f1:.4f}_fold_{fold}.pth")
+                        best_valid_f1 = cur_f1
+
+                        if len(glob(f'{opts.save_name}_*_fold_{fold}.pth')) > opts.save_limit:
+                            remove_item = sorted(glob(f'{opts.save_name}_*_fold_{fold}.pth'))[0]
+                            os.remove(remove_item)
+
+                print(
+                    f"[Train] f1 : {train_item[2]:.5}, best f1 : {best_train_f1:.5} || "
+                    f"acc : {train_item[1]:.5%}, best acc: {best_train_acc:.5%} || "
+                    f"loss : {train_item[0]:.5}, best loss: {best_train_loss:.5} || "
+                )
+                print(
+                    f"[Valid] f1 : {valid_item[2]:.5}, best f1 : {best_valid_f1:.5} || "
+                    f"acc : {valid_item[1]:.5%}, best acc: {best_valid_acc:.5%} || "
+                    f"loss : {valid_item[0]:.5}, best loss: {best_valid_loss:.5} || "
+                )
+                print()
+
+                # wandb.log({
+                #     "train_loss": train_item[0],
+                #     "train_acc": train_item[1],
+                #     "train_f1": train_item[2],
+                #     "best_train_f1": best_train_f1,
+
+                #     "valid_loss": valid_item[0],
+                #     "valid_acc": valid_item[1],
+                #     "valid_f1": valid_item[2],
+                #     "best_valid_f1": best_valid_f1,
+                # })
+    # Print fold results
+    print(f'K-FOLD CROSS VALIDATION RESULTS FOR {KFold} FOLDS')
+    print('--------------------------------')
+    sum_k = 0.0
+    for key, value in results.items():
+      print(f'Fold {key}: {value} %')
+      sum_k += value
+    print(f'Average: {sum_k/len(results.items())} %')
 
 
 if __name__ == '__main__':
