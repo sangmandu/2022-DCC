@@ -501,7 +501,7 @@ def train_fold(df, criterion, opts):
                     f"loss : {valid_item[0]:.5}, best loss: {best_valid_loss:.5} || "
                 )
 
-                if opts.wandb:
+                if opts.use_wandb:
                     wandb.log({
                         "train_loss": train_item[0],
                         "train_acc": train_item[1],
