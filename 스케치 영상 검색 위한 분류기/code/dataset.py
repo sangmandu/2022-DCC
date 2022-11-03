@@ -93,7 +93,7 @@ class BaseAugmentation:
     def __init__(self, resize, mean, std, **args):
         self.transform = transforms.Compose([
             Resize(resize),
-            CenterCrop(resize-30),
+            CenterCrop(resize-15),
             ToTensor(),
             Normalize(mean=mean, std=std),
         ])
