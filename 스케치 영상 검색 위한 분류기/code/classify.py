@@ -357,6 +357,7 @@ def train_fold(df, criterion, opts):
     for fold, (train_idx, valid_idx) in enumerate(skf.split(df, df['label']), 1):
         if opts.k != 0:
             if fold != opts.k:
+                print(f"skip {fold}")
                 continue
 
         train_dataset = Dataset(df.iloc[train_idx], resize=opts.resize, aug=opts.aug)
