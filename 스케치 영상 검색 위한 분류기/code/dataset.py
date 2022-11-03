@@ -67,12 +67,14 @@ class TrainAugmentation:
     def __init__(self, resize, mean, std, **args):
         self.transform = transforms.Compose([
             transforms.RandomChoice([
-                RandomHorizontalFlip(p=0.8),
-                RandomPerspective(p=0.8, fill=255),
-                RandomRotation(degrees=180, fill=255),
+                RandomHorizontalFlip(p=0.5),
+                RandomVerticalFlip(p=0.5),
             ]),
 
-            Resize((resize, resize)),
+            transforms.RandomChoice([
+                RandomPerspective(fill=255),
+                RandomRotation(degrees=180, fill=255),
+            ]),
 
             RandomApply([
                 transforms.ColorJitter(brightness=(0.2, 2),
@@ -81,6 +83,7 @@ class TrainAugmentation:
                                        hue=(-0.3, 0.3)),
             ]),
 
+            Resize((resize, resize)),
             ToTensor(),
             Normalize(mean=mean, std=std),
         ])
@@ -92,7 +95,7 @@ class TrainAugmentation:
 class BaseAugmentation:
     def __init__(self, resize, mean, std, **args):
         self.transform = transforms.Compose([
-            Resize(resize),
+            Resize((resize, resize)),
             CenterCrop(resize-15),
             ToTensor(),
             Normalize(mean=mean, std=std),
@@ -314,7 +317,7 @@ def load_data(datadir, dup_sim, sampling, crop, only_illust):
     '''
 
     labelobj = re.compile('L2_([0-9]+)')
-    label_to_num = {re.findall(labelobj, path)[0]: num for num, path in enumerate(glob(os.path.join(datadir, '*')))}
+    label_to_num = {re.findall(labelobj, path)[0]: num for num, path in enumerate(sorted(glob(os.path.join(datadir, '*'))))}
     print(label_to_num)
 
     paths = [image_path for image_path in glob(os.path.join(datadir, '*', '*'))]
