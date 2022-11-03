@@ -30,13 +30,34 @@ from imblearn.under_sampling import NearMiss
 
 
 class Dataset(Dataset):
-    def __init__(self, df, resize, mean=(0.7727, 0.7547, 0.7352), std=(0.2610, 0.2741, 0.2907), aug=True, transform=None):
+    def __init__(self, df, resize, mean=(0.7727, 0.7547, 0.7352), std=(0.2610, 0.2741, 0.2907), aug=True, transform=None, kind=""):
         self.df = df
         self.mean = mean
         self.std = std
 
         if aug:
-            self.transform = transform if transform is not None else TrainAugmentation(resize, mean, std)
+            if kind == "affine" :
+                self.transform = transform if transform is not None else TrainAugmentation_affine(resize, mean, std)
+            elif kind == "perspective" :
+                self.transform = transform if transform is not None else TrainAugmentation_perspective(resize, mean, std)  
+            elif kind == "horizon" :
+                self.transform = transform if transform is not None else TrainAugmentation_horizon(resize, mean, std)
+            elif kind == "veritcal" :
+                self.transform = transform if transform is not None else TrainAugmentation_veritcal(resize, mean, std)  
+            elif kind == "none" :
+                self.transform = transform if transform is not None else TrainAugmentation_none(resize, mean, std)  
+            elif kind == "crop" :
+              self.transform = transform if transform is not None else TrainAugmentation_crop(resize, mean, std)  
+            elif kind == "eras" :
+                self.transform = transform if transform is not None else TrainAugmentation_eras(resize, mean, std)  
+            elif kind == "crop_eras" :
+                self.transform = transform if transform is not None else TrainAugmentation_crop_eras(resize, mean, std) 
+            elif kind == "center_crop" :
+                self.transform = transform if transform is not None else TrainAugmentation_center_crop(resize, mean, std) 
+            else :
+                self.transform = transform if transform is not None else TrainAugmentation(resize, mean, std)
+            #self.transform = transform if transform is not None else TrainAugmentation(resize, mean, std)
+
         else:
             self.transform = BaseAugmentation(resize, mean, std)
 
@@ -64,6 +85,125 @@ class Dataset(Dataset):
         return img_cp
 
 
+## (제거 대상) none
+class TrainAugmentation_none:
+    def __init__(self, resize, mean, std, **args):
+        self.transform = transforms.Compose([
+            Resize((resize, resize)),
+            ToTensor(),
+            Normalize(mean=mean, std=std),
+        ])
+
+    def __call__(self, image):
+        return self.transform(image)
+
+## (제거 대상) veritcal
+class TrainAugmentation_veritcal:
+    def __init__(self, resize, mean, std, **args):
+        self.transform = transforms.Compose([
+            Resize((resize, resize)),
+            RandomVerticalFlip(p=0.5),
+            ToTensor(),
+            Normalize(mean=mean, std=std),
+        ])
+
+    def __call__(self, image):
+        return self.transform(image)
+
+## (제거 대상) horizon
+class TrainAugmentation_horizon:
+    def __init__(self, resize, mean, std, **args):
+        self.transform = transforms.Compose([
+            Resize((resize, resize)),
+            RandomHorizontalFlip(p=0.5),
+            ToTensor(),
+            Normalize(mean=mean, std=std),
+        ])
+
+    def __call__(self, image):
+        return self.transform(image)
+## (제거 대상) perspective
+class TrainAugmentation_perspective:
+    def __init__(self, resize, mean, std, **args):
+        self.transform = transforms.Compose([
+            Resize((resize, resize)),
+            RandomPerspective(fill=255),
+            ToTensor(),
+            Normalize(mean=mean, std=std),
+        ])
+
+    def __call__(self, image):
+        return self.transform(image)
+
+## (제거 대상) affine
+class TrainAugmentation_affine:
+    def __init__(self, resize, mean, std, **args):
+        self.transform = transforms.Compose([
+            Resize((resize, resize)),
+            RandomAffine(
+                degrees=(-30,30), # -30 ~ 30 도 
+                fill = 255 # 흰배경으로 채우기
+            ),
+            ToTensor(),
+            Normalize(mean=mean, std=std),
+        ])
+
+    def __call__(self, image):
+        return self.transform(image)
+#-----------------------------------------------------------
+## (제거 대상) center_crop
+class TrainAugmentation_center_crop:
+    def __init__(self, resize, mean, std, **args):
+        self.transform = transforms.Compose([
+            Resize((resize, resize)),
+            CenterCrop(224),
+            ToTensor(),
+            Normalize(mean=mean, std=std),
+        ])
+
+    def __call__(self, image):
+        return self.transform(image)
+
+## (제거 대상) crop + eras
+class TrainAugmentation_crop_eras:
+    def __init__(self, resize, mean, std, **args):
+        self.transform = transforms.Compose([
+            Resize((resize, resize)),
+            RandomCrop(size=(int(resize/2),int(resize/2))),
+            ToTensor(),
+            Normalize(mean=mean, std=std),
+            RandomErasing()
+        ])
+
+    def __call__(self, image):
+        return self.transform(image)
+
+## (제거 대상) eras
+class TrainAugmentation_eras:
+    def __init__(self, resize, mean, std, **args):
+        self.transform = transforms.Compose([
+            Resize((resize, resize)),
+            ToTensor(),
+            Normalize(mean=mean, std=std),
+            RandomErasing()
+        ])
+
+    def __call__(self, image):
+        return self.transform(image)
+
+## (제거 대상) crop
+class TrainAugmentation_crop:
+    def __init__(self, resize, mean, std, **args):
+        self.transform = transforms.Compose([
+            Resize((resize, resize)),
+            RandomCrop(size=(int(resize/2),int(resize/2))),
+            ToTensor(),
+            Normalize(mean=mean, std=std),
+        ])
+
+    def __call__(self, image):
+        return self.transform(image)
+#-----------------------------------------------------------
 class TrainAugmentation:
     def __init__(self, resize, mean, std, **args):
         self.transform = transforms.Compose([
