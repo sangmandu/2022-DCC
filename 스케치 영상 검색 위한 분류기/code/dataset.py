@@ -67,11 +67,10 @@ class TrainAugmentation:
     def __init__(self, resize, mean, std, **args):
         self.transform = transforms.Compose([
             transforms.RandomChoice([
-                RandomHorizontalFlip(p=0.5),
-                RandomVerticalFlip(p=0.5),
+                RandomHorizontalFlip(p=0.8),
+                RandomPerspective(p=0.8, fill=255),
+                RandomRotation(degrees=180, fill=255),
             ]),
-
-            RandomRotation(degrees=180),
 
             Resize((resize, resize)),
 
@@ -94,7 +93,7 @@ class BaseAugmentation:
     def __init__(self, resize, mean, std, **args):
         self.transform = transforms.Compose([
             Resize(resize),
-            CenterCrop(224),
+            CenterCrop(resize-30),
             ToTensor(),
             Normalize(mean=mean, std=std),
         ])

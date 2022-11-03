@@ -41,8 +41,8 @@ os.environ['WANDB_SILENT'] = "true"
 
 # Optional features.
 @click.option('--resize',       help='How much to resize',                  metavar='INT',      type=click.IntRange(min=1),                 default=256)
-@click.option('--batch_size',   help='Total batch size',                    metavar='INT',      type=click.IntRange(min=1),                 default=64)
-@click.option('--epochs',       help='Epochs',                              metavar='INT',      type=click.IntRange(min=1),                 default=30)
+@click.option('--batch_size',   help='Total batch size',                    metavar='INT',      type=click.IntRange(min=1),                 default=32)
+@click.option('--epochs',       help='Epochs',                              metavar='INT',      type=click.IntRange(min=1),                 default=70)
 @click.option('--fold',         help='Whether to apply cross fold',         metavar='BOOL',     is_flag=True)
 @click.option('--lr',           help='Learning rate',                       metavar='FLOAT',    type=click.FloatRange(min=0),               default=5e-3)
 @click.option('--optimizer',    help='Optimizer ',                          metavar='STR',      type=str,                                   default='AdamW')
@@ -500,17 +500,18 @@ def train_fold(df, criterion, opts):
                     f"loss : {valid_item[0]:.5}, best loss: {best_valid_loss:.5} || "
                 )
 
-                wandb.log({
-                    "train_loss": train_item[0],
-                    "train_acc": train_item[1],
-                    "train_f1": train_item[2],
-                    "best_train_f1": best_train_f1,
+                if opts.wandb:
+                    wandb.log({
+                        "train_loss": train_item[0],
+                        "train_acc": train_item[1],
+                        "train_f1": train_item[2],
+                        "best_train_f1": best_train_f1,
 
-                    "valid_loss": valid_item[0],
-                    "valid_acc": valid_item[1],
-                    "valid_f1": valid_item[2],
-                    "best_valid_f1": best_valid_f1,
-                })
+                        "valid_loss": valid_item[0],
+                        "valid_acc": valid_item[1],
+                        "valid_f1": valid_item[2],
+                        "best_valid_f1": best_valid_f1,
+                    })
 
 
 if __name__ == '__main__':
