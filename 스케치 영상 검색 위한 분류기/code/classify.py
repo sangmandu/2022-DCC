@@ -41,7 +41,7 @@ os.environ['WANDB_SILENT'] = "true"
 
 # Optional features.
 @click.option('--resize',       help='How much to resize',                  metavar='INT',      type=click.IntRange(min=1),                 default=128)
-@click.option('--batch_size',   help='Total batch size',                    metavar='INT',      type=click.IntRange(min=1),                 default=256)
+@click.option('--batch_size',   help='Total batch size',                    metavar='INT',      type=click.IntRange(min=1),                 default=64)
 @click.option('--epochs',       help='Epochs',                              metavar='INT',      type=click.IntRange(min=1),                 default=30)
 @click.option('--fold',         help='Whether to apply cross fold',         metavar='BOOL',     is_flag=True)
 @click.option('--lr',           help='Learning rate',                       metavar='FLOAT',    type=click.FloatRange(min=0),               default=5e-3)
@@ -133,9 +133,6 @@ def train(df, model, criterion, optimizer, scheduler, opts):
     :param paths:
     :return:
     '''
-
-    ## Wandb
-    '''추후 구현'''
 
     ## Stratified K-Fold
     ''' 추후 구현'''
