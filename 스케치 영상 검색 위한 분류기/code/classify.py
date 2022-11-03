@@ -40,7 +40,7 @@ os.environ['WANDB_SILENT'] = "true"
 @click.option('--model_name',   help='Model name to train',                 metavar='STR',      type=str,           required=True)
 
 # Optional features.
-@click.option('--resize',       help='How much to resize',                  metavar='INT',      type=click.IntRange(min=1),                 default=128)
+@click.option('--resize',       help='How much to resize',                  metavar='INT',      type=click.IntRange(min=1),                 default=256)
 @click.option('--batch_size',   help='Total batch size',                    metavar='INT',      type=click.IntRange(min=1),                 default=64)
 @click.option('--epochs',       help='Epochs',                              metavar='INT',      type=click.IntRange(min=1),                 default=30)
 @click.option('--fold',         help='Whether to apply cross fold',         metavar='BOOL',     is_flag=True)
@@ -59,19 +59,17 @@ os.environ['WANDB_SILENT'] = "true"
 @click.option('--use_crop',     help='use crop image for enhancement',      metavar='BOOL',     is_flag=True)
 @click.option('--check_stat',   help='computing image mean and std',        metavar='BOOL',     is_flag=True)
 @click.option('--only_illust',  help='train only illustration image or not',metavar='BOOL',     type=bool,                                  default=True)
-@click.option('--oversampling',     help='use oversampling for enhancement',      metavar='BOOL',     is_flag=True)
+@click.option('--oversampling', help='use oversampling for enhancement',    metavar='BOOL',     is_flag=True)
 @click.option('--over_iter',  type=click.IntRange(min=0), multiple=True, default=[])
 @click.option('--over_label', type=click.IntRange(min=0), multiple=True, default=[])
-
-
 
 # Misc settings.
 @click.option('--save_name',    help='Name of model when saved',            metavar='STR',      type=str,                                   default='experiment')
 @click.option('--save_limit',   help='# of saved models',                   metavar='INT',      type=click.IntRange(min=1),                 default=2)
 @click.option('--seed',         help='Random seed',                         metavar='INT',      type=click.IntRange(min=0),                 default=0)
 @click.option('--use_wandb',    help='Wandb',                               metavar='BOOL',     is_flag=True)
-@click.option('--f1_score_report',    help='f1_score_report',                               metavar='BOOL',     is_flag=True)
-@click.option('--kind',    help='test_aug',                                 metavar='STR',     type=str,                               default='')
+@click.option('--f1_score_report',    help='f1_score_report',               metavar='BOOL',     is_flag=True)
+@click.option('--k',    type=int,   default=0)
 
 
 def main(**kwargs):
@@ -102,7 +100,8 @@ def main(**kwargs):
     criterion = create_criterion(opts.criterion)
 
     ## Model
-    model = get_model(opts.model_name, opts.resize).to(DEVICE)
+    if not opts.fold:
+        model = get_model(opts.model_name, opts.resize).to(DEVICE)
 
     ## Checkpoint
     if opts.checkpoint:
@@ -110,17 +109,18 @@ def main(**kwargs):
         model.load_state_dict(torch.load(opts.checkpoint))
 
     ## Optimizer
-    optimizer = get_optimizer(opts.optimizer, opts.lr, model) # default: Adam
+    if not opts.fold:
+        optimizer = get_optimizer(opts.optimizer, opts.lr, model) # default: Adam
 
     ## Scheduler
-    base_step = int(len(df) * (1 - opts.val_ratio))
-    # scheduler = get_scheduler(opts.scheduler, opts.lr, opts.batch_size, base_step, optimizer)
-    scheduler = None
+        base_step = int(len(df) * (1 - opts.val_ratio))
+        # scheduler = get_scheduler(opts.scheduler, opts.lr, opts.batch_size, base_step, optimizer)
+        scheduler = None
 
     ## Train
     print("Start training")
     if opts.fold:
-        train_fold(df, model, criterion, optimizer, scheduler, opts)
+        train_fold(df, criterion, opts)
     else:
         train(df, model, criterion, optimizer, scheduler, opts)
 
@@ -347,57 +347,52 @@ def train(df, model, criterion, optimizer, scheduler, opts):
 
                     "lr": get_lr(optimizer)
                 })
-def train_fold(df, model, criterion, optimizer,scheduler, opts):
-    KFold = 5
-    splitter = StratifiedKFold(n_splits=KFold, shuffle=True, random_state=0)
+
+
+def train_fold(df, criterion, opts):
+    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=opts.seed)
+
+    assert opts.k in [0, 1, 2, 3, 4, 5], "setting k certainly"
     
-    # For fold results
-    results = {}
-    
-    for fold, (train_ids, test_ids) in enumerate(splitter.split(df['path'], df['label'])):
-        
-        # Print
-        print(f'FOLD {fold}')
-        print('--------------------------------')
-        
-        
-        # Sample elements randomly from a given list of ids, no replacement.
-        train_subsampler = SubsetRandomSampler(train_ids)
-        valid_subsampler = SubsetRandomSampler(test_ids)
-        
-        train_dataset = Dataset(df, resize=opts.resize, aug=opts.aug, kind=opts.kind)
-        valid_dataset = Dataset(df, resize=opts.resize, aug=False)
+    for fold, (train_idx, valid_idx) in enumerate(skf.split(df, df['label']), 1):
+        if opts.k != 0:
+            if fold != opts.k:
+                continue
+
+        train_dataset = Dataset(df.iloc[train_idx], resize=opts.resize, aug=opts.aug)
+        valid_dataset = Dataset(df.iloc[valid_idx], resize=opts.resize, aug=False)
+
+        print(f'FOLD {fold} | train_dataset {len(train_dataset)} | valid_dataset {len(valid_dataset)}')
+
         ## DataLoader
         train_loader = DataLoader(
             dataset=train_dataset,
             batch_size=opts.batch_size,
             num_workers=multiprocessing.cpu_count() // 3,
-            # shuffle=True,
+            shuffle=True,
             pin_memory=True,
-            drop_last=True,
-            sampler=train_subsampler
+            drop_last=True
         )
 
         valid_loader = DataLoader(
             dataset=valid_dataset,
             batch_size=opts.batch_size,
             num_workers=multiprocessing.cpu_count() // 3,
-            # shuffle=False,
+            shuffle=False,
             pin_memory=True,
             # drop_last=True,
-            sampler=valid_subsampler
         )
+
         ## reset_weights
-        model.apply(reset_weights)
+        model = get_model(opts.model_name, opts.resize).to(DEVICE)
+        optimizer = get_optimizer(opts.optimizer, opts.lr, model)
+
         ## train
         best_train_acc = best_valid_acc = 0
         best_train_loss = best_valid_loss = np.inf
         best_train_f1 = best_valid_f1 = 0
         for epoch in range(opts.epochs):
             model.train()
-            if opts.f1_score_report:
-                classification_report_y_pred = np.array([])
-                classification_report_label = np.array([])
 
             train_batch_loss = []
             train_batch_accuracy = []
@@ -430,17 +425,12 @@ def train_fold(df, model, criterion, optimizer,scheduler, opts):
                 train_batch_f1.append(
                     f1
                 )
-                if opts.f1_score_report:
-                    classification_report_y_pred = np.append(classification_report_y_pred, preds.cpu().numpy().squeeze())  
-                    classification_report_label = np.append(classification_report_label, labels.cpu().numpy().squeeze())
-
 
                 train_pbar.set_description(
                     f'Epoch #{epoch+1:2.0f} | '
                     f'train | f1 : {train_batch_f1[-1]:.5f} | accuracy : {train_batch_accuracy[-1]:.5f} | '
                     f'loss : {train_batch_loss[-1]:.5f} | lr : {get_lr(optimizer):.7f}'
                 )
-                
 
             # scheduler.step()
             train_item = (sum(train_batch_loss) / len(train_loader),
@@ -449,20 +439,13 @@ def train_fold(df, model, criterion, optimizer,scheduler, opts):
             best_train_loss = min(best_train_loss, train_item[0])
             best_train_acc = max(best_train_acc, train_item[1])
             best_train_f1 = max(best_train_f1, train_item[2])
-            if opts.f1_score_report:
-                with open(f"./f1_score_train/{opts.model_name}-f1 score_report-epoch{epoch}.txt", "w") as text_file:
-                    print(classification_report(classification_report_label, classification_report_y_pred), file=text_file)
-            
-            correct, total = 0, 0
+
             with torch.no_grad():
                 model.eval()
 
                 valid_batch_loss = []
                 valid_batch_accuracy = []
                 valid_batch_f1 = []
-                if opts.f1_score_report:
-                    classification_report_y_pred = np.array([])
-                    classification_report_label = np.array([])
 
                 # figure = None
                 valid_pbar = tqdm(valid_loader, total=len(valid_loader))
@@ -471,13 +454,7 @@ def train_fold(df, model, criterion, optimizer,scheduler, opts):
 
                     outs = model(inputs)
                     preds = torch.argmax(outs, dim=-1)
-                    #################################################################
-                    # Set total and correct
-                    _, predicted = torch.max(outs.data, 1)
-                    total += labels.size(0)
-                    correct += (predicted == labels).sum().item()
-                    results[fold] = 100.0 * (correct / total)
-                    #################################################################
+
                     valid_batch_loss.append(
                         criterion(outs, labels).item()
                     )
@@ -488,22 +465,11 @@ def train_fold(df, model, criterion, optimizer,scheduler, opts):
                     valid_batch_f1.append(
                         f1
                     )
-                    if opts.f1_score_report:
-                        classification_report_y_pred = np.append(classification_report_y_pred, preds.cpu().numpy().squeeze())  
-                        classification_report_label = np.append(classification_report_label, labels.cpu().numpy().squeeze())
 
                     valid_pbar.set_description(
                         f'valid | f1 : {valid_batch_f1[-1]:.5f} | accuracy : {valid_batch_accuracy[-1]:.5f} | '
                         f'loss : {valid_batch_loss[-1]:.5f} | lr : {get_lr(optimizer):.7f}'
                     )
-
-                    # 시각화를 위해 나중에 개발
-                    # if figure is None:
-                    #     inputs_np = torch.clone(inputs).detach().cpu().permute(0, 2, 3, 1).numpy()
-                    #     inputs_np = valid_dataset.denormalize_image(inputs_np, valid_dataset.mean, valid_dataset.std)
-                    #     figure = grid_image(
-                    #         inputs_np, labels, preds, n=16, shuffle=True
-                    #     )
 
                 valid_item = (sum(valid_batch_loss) / len(valid_loader),
                             sum(valid_batch_accuracy) / len(valid_loader),
@@ -512,9 +478,6 @@ def train_fold(df, model, criterion, optimizer,scheduler, opts):
                 best_valid_acc = max(best_valid_acc, valid_item[1])
                 best_valid_f1 = max(best_valid_f1, valid_item[2])
                 cur_f1 = valid_item[2]
-                if opts.f1_score_report:
-                    with open(f"./f1_score/{opts.model_name}-f1 score_report-epoch{epoch}.txt", "w") as text_file:
-                        print(classification_report(classification_report_label, classification_report_y_pred), file=text_file)
 
                 if cur_f1 >= best_valid_f1:
                     if cur_f1 == best_valid_f1:
@@ -536,27 +499,18 @@ def train_fold(df, model, criterion, optimizer,scheduler, opts):
                     f"acc : {valid_item[1]:.5%}, best acc: {best_valid_acc:.5%} || "
                     f"loss : {valid_item[0]:.5}, best loss: {best_valid_loss:.5} || "
                 )
-                print()
 
-                # wandb.log({
-                #     "train_loss": train_item[0],
-                #     "train_acc": train_item[1],
-                #     "train_f1": train_item[2],
-                #     "best_train_f1": best_train_f1,
+                wandb.log({
+                    "train_loss": train_item[0],
+                    "train_acc": train_item[1],
+                    "train_f1": train_item[2],
+                    "best_train_f1": best_train_f1,
 
-                #     "valid_loss": valid_item[0],
-                #     "valid_acc": valid_item[1],
-                #     "valid_f1": valid_item[2],
-                #     "best_valid_f1": best_valid_f1,
-                # })
-    # Print fold results
-    print(f'K-FOLD CROSS VALIDATION RESULTS FOR {KFold} FOLDS')
-    print('--------------------------------')
-    sum_k = 0.0
-    for key, value in results.items():
-      print(f'Fold {key}: {value} %')
-      sum_k += value
-    print(f'Average: {sum_k/len(results.items())} %')
+                    "valid_loss": valid_item[0],
+                    "valid_acc": valid_item[1],
+                    "valid_f1": valid_item[2],
+                    "best_valid_f1": best_valid_f1,
+                })
 
 
 if __name__ == '__main__':

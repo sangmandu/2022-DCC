@@ -64,7 +64,7 @@ def main(**kwargs):
         columns=['name', 'path', 'label']
     )
 
-    test_dataset = Dataset(df, resize=opts.resize, aug=True)
+    test_dataset = Dataset(df, resize=opts.resize, aug=False)
     test_loader = DataLoader(
         dataset=test_dataset,
         batch_size=opts.batch_size,

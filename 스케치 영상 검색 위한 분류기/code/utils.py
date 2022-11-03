@@ -21,36 +21,6 @@ def set_seed(seed):
     torch.backends.cudnn.benchmark = False
 
 
-# def grid_image(np_images, gts, preds, n=16, shuffle=False):
-#     batch_size = np_images.shape[0]
-#     assert n <= batch_size
-#
-#     choices = random.choices(range(batch_size), k=n) if shuffle else list(range(n))
-#     figure = plt.figure(figsize=(12, 18 + 2))  # cautions: hardcoded, 이미지 크기에 따라 figsize 를 조정해야 할 수 있습니다. T.T
-#     plt.subplots_adjust(top=0.8)               # cautions: hardcoded, 이미지 크기에 따라 top 를 조정해야 할 수 있습니다. T.T
-#     n_grid = np.ceil(n ** 0.5)
-#     tasks = ["mask", "gender", "age"]
-#     for idx, choice in enumerate(choices):
-#         gt = gts[choice].item()
-#         pred = preds[choice].item()
-#         image = np_images[choice]
-#         # title = f"gt: {gt}, pred: {pred}"
-#         gt_decoded_labels = Dataset.decode_multi_class(gt)
-#         pred_decoded_labels = Dataset.decode_multi_class(pred)
-#         title = "\n".join([
-#             f"{task} - gt: {gt_label}, pred: {pred_label}"
-#             for gt_label, pred_label, task
-#             in zip(gt_decoded_labels, pred_decoded_labels, tasks)
-#         ])
-#
-#         plt.subplot(n_grid, n_grid, idx + 1, title=title)
-#         plt.xticks([])
-#         plt.yticks([])
-#         plt.grid(False)
-#         plt.imshow(image, cmap=plt.cm.binary)
-
-    # return figure
-
 def get_model(model_name, resize):
     if model_name == 'BaseModel':
         model_module = getattr(import_module('.'.join(['models', model_name, 'model'])), model_name)
@@ -62,6 +32,21 @@ def get_model(model_name, resize):
         model = model_module.from_name(
             model_name='efficientnet-b0',
             image_size=resize,
+            num_classes=20,
+        )
+    elif model_name == 'EfficientNetV2':
+        model_module = getattr(import_module('.'.join(['models', model_name, 'model'])), model_name)
+        cfgs = [
+            # t, c, n, s, SE
+            [2, 30, 2, 1, 0],
+            [4, 42, 2, 1, 0],
+            [4, 60, 3, 2, 0],
+            [4, 66, 3, 1, 1],
+            [6, 84, 3, 1, 1],
+            [6, 96, 4, 2, 1],
+        ]
+        model = model_module(
+            cfgs=cfgs,
             num_classes=20,
         )
     else:
