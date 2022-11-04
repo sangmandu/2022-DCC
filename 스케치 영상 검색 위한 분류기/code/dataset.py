@@ -63,6 +63,7 @@ class Dataset(Dataset):
         img_cp = np.clip(img_cp, 0, 255).astype(np.uint8)
         return img_cp
 
+
 class TrainAugmentation:
     def __init__(self, resize, mean, std, **args):
         self.transform = transforms.Compose([
@@ -96,7 +97,7 @@ class BaseAugmentation:
     def __init__(self, resize, mean, std, **args):
         self.transform = transforms.Compose([
             Resize((resize, resize)),
-            CenterCrop(resize-15),
+            # CenterCrop(resize-15),
             ToTensor(),
             Normalize(mean=mean, std=std),
         ])

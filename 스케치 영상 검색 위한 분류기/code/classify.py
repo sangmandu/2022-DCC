@@ -386,6 +386,13 @@ def train_fold(df, criterion, opts):
 
         ## reset_weights
         model = get_model(opts.model_name, opts.resize).to(DEVICE)
+        model.load_state_dict(torch.load('output/pretrain/ep100.pth'), strict=False)
+
+        import torch.nn as nn
+        model.classifier = nn.Linear(model.output_channel, 20)
+
+        model = model.to(DEVICE)
+
         optimizer = get_optimizer(opts.optimizer, opts.lr, model)
 
         ## train

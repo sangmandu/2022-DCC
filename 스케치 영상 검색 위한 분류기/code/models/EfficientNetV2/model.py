@@ -134,10 +134,10 @@ class EfficientNetV2(nn.Module):
                 input_channel = output_channel
         self.features = nn.Sequential(*layers)
         # building last several layers
-        output_channel = _make_divisible(1792 * width_mult, 8) if width_mult > 1.0 else 1792
-        self.conv = conv_1x1_bn(input_channel, output_channel)
+        self.output_channel = _make_divisible(1792 * width_mult, 8) if width_mult > 1.0 else 1792
+        self.conv = conv_1x1_bn(input_channel, self.output_channel)
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.classifier = nn.Linear(output_channel, num_classes)
+        self.classifier = nn.Linear(self.output_channel, num_classes)
 
         self._initialize_weights()
 
