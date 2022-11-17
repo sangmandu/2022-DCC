@@ -1,6 +1,7 @@
 from tqdm import tqdm
 
 from dataset import load_data, Dataset
+from utils import get_model, set_seed
 
 from torchsummary import summary
 from torch.utils.data import DataLoader, Dataset
@@ -70,17 +71,14 @@ os.environ['WANDB_SILENT'] = "true"
 # Required.
 @click.option('--outdir',       help='Where to save the results',           metavar='DIR',      type=str,           required=True)
 @click.option('--datadir',      help='Data path',                           metavar='DIR',      type=str,           required=True)
-@click.option('--model_name',   help='Model name to train',                 metavar='STR',      type=str,           required=True)
 
 # Optional features.
 @click.option('--resize',       help='How much to resize',                  metavar='INT',      type=click.IntRange(min=1),                 default=128)
-@click.option('--batch_size',   help='Total batch size',                    metavar='INT',      type=click.IntRange(min=1),                 default=256)
-@click.option('--epochs',       help='Epochs',                              metavar='INT',      type=click.IntRange(min=1),                 default=200)
-@click.option('--lr',           help='Learning rate',                       metavar='FLOAT',    type=click.FloatRange(min=0),               default=1e-3)
-@click.option('--scheduler',    help='Scheduler',                           metavar='STR',      type=str,                                   default='CyclicLR')
+@click.option('--batch_size',   help='Total batch size',                    metavar='INT',      type=click.IntRange(min=1),                 default=50)
+@click.option('--epochs',       help='Epochs',                              metavar='INT',      type=click.IntRange(min=1),                 default=100)
+@click.option('--lr',           help='Learning rate',                       metavar='FLOAT',    type=click.FloatRange(min=0),               default=5e-4)
 
 # Misc settings.
-@click.option('--save_name',    help='Name of model when saved',            metavar='STR',      type=str,                                   default='experiment')
 @click.option('--seed',         help='Random seed',                         metavar='INT',      type=click.IntRange(min=0),                 default=0           )
 @click.option('--use_wandb',    help='Wandb',                               metavar='BOOL',     is_flag=True)
 
@@ -89,15 +87,17 @@ def main(**kwargs):
     opts = EasyDict(kwargs)
     print(opts)
 
+    set_seed(opts.seed)
+
     df = load_data(datadir=opts.datadir, dup_sim=0.91, sampling='', crop=False, only_illust=True)
     dataset = Dataset(df, resize=opts.resize)
     dataloader = DataLoader(dataset, batch_size=opts.batch_size, shuffle=True)
 
-    q_encoder = resnet18(pretrained=False)
+    q_encoder = get_model('EfficientNetV2', opts.resize)
 
     # define classifier for our task
     classifier = nn.Sequential(OrderedDict([
-        ('fc1', nn.Linear(q_encoder.fc.in_features, 100)),
+        ('fc1', nn.Linear(q_encoder.output_channel, 100)),
         ('added_relu1', nn.ReLU()),
         ('fc2', nn.Linear(100, 50)),
         ('added_relu2', nn.ReLU()),
@@ -106,7 +106,7 @@ def main(**kwargs):
 
     # replace classifier
     # and this classifier make representation have 25 dimention
-    q_encoder.fc = classifier
+    q_encoder.classifier = classifier
 
     # define encoder for key by coping q_encoder
     k_encoder = copy.deepcopy(q_encoder)
@@ -119,6 +119,7 @@ def main(**kwargs):
         summary(q_encoder, (3, 224, 224), device=DEVICE)
     )
 
+    return
     # define loss function
     def loss_func(q, k, queue, t=0.05):
         # t: temperature
@@ -136,7 +137,7 @@ def main(**kwargs):
         return torch.mean(-torch.log(torch.div(pos, denominator)))
 
     # define optimizer
-    opt = optim.SGD(q_encoder.parameters())
+    opt = optim.AdamW(q_encoder.parameters(), lr=opts.lr, weight_decay=5e-4)
 
     # initialize the queue
     queue = None
@@ -146,13 +147,11 @@ def main(**kwargs):
     flag = 0
     if queue is None:
         while True:
-
             with torch.no_grad():
-                for dl in dataloader:
-                    name, label = dl[0], dl[3]
-                    img = (dl[1], dl[2])
+                print("making queue...")
+                for img_q, img_k in dataloader:
                     # extract key samples
-                    xk = img[1].to(DEVICE)
+                    xk = img_k.to(DEVICE)
                     k = k_encoder(xk).detach()
 
                     if queue is None:
@@ -185,13 +184,13 @@ def main(**kwargs):
 
     q_encoder.train()
 
-    sanity_check = True
-    for epoch in tqdm(range(1, opts.epochs+1)):
+    sanity_check = False
+    for epoch in range(1, opts.epochs+1):
         print('Epoch {}/{}'.format(epoch, opts.epochs))
 
         q_encoder.train()
         running_loss = 0
-        for img_q, img_k in dataloader:
+        for img_q, img_k in tqdm(dataloader):
             # retrieve query and key
             xq = img_q.to(DEVICE)
             xk = img_k.to(DEVICE)
@@ -232,7 +231,7 @@ def main(**kwargs):
 
 
         # save weights
-        if epoch % 50 == 0:
+        if epoch % 2 == 0:
             torch.save(q_encoder.state_dict(), os.path.join('output', 'pretrain', f'ep{epoch}.pth'))
 
         if sanity_check:

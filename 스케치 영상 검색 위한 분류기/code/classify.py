@@ -65,7 +65,7 @@ os.environ['WANDB_SILENT'] = "true"
 
 # Misc settings.
 @click.option('--save_name',    help='Name of model when saved',            metavar='STR',      type=str,                                   default='experiment')
-@click.option('--save_limit',   help='# of saved models',                   metavar='INT',      type=click.IntRange(min=1),                 default=2)
+@click.option('--save_limit',   help='# of saved models',                   metavar='INT',      type=click.IntRange(min=1),                 default=5)
 @click.option('--seed',         help='Random seed',                         metavar='INT',      type=click.IntRange(min=0),                 default=0)
 @click.option('--use_wandb',    help='Wandb',                               metavar='BOOL',     is_flag=True)
 @click.option('--f1_score_report',    help='f1_score_report',               metavar='BOOL',     is_flag=True)
@@ -102,6 +102,12 @@ def main(**kwargs):
     ## Model
     if not opts.fold:
         model = get_model(opts.model_name, opts.resize).to(DEVICE)
+        model.load_state_dict(torch.load('output/pretrain/ep100.pth'), strict=False)
+
+        import torch.nn as nn
+        model.classifier = nn.Linear(model.output_channel, 20)
+
+        model = model.to(DEVICE)
 
     ## Checkpoint
     if opts.checkpoint:
@@ -162,7 +168,7 @@ def train(df, model, criterion, optimizer, scheduler, opts):
 
     else:
         # train_dataset = Dataset(train_df, resize=opts.resize, aug=opts.aug)
-        train_dataset = Dataset(train_df, resize=opts.resize, aug=opts.aug, kind=opts.kind)
+        train_dataset = Dataset(train_df, resize=opts.resize, aug=opts.aug)
 
     valid_dataset = Dataset(eval_df, resize=opts.resize, aug=False)
 

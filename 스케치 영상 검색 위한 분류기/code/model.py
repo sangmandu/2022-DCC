@@ -96,9 +96,9 @@ class MBConv(nn.Module):
             return self.conv(x)
 
 
-class Vuvuzela(nn.Module):
+class Classifier(nn.Module):
     def __init__(self, cfgs, num_classes=20, width_mult=1.):
-        super(Vuvuzela, self).__init__()
+        super(Classifier, self).__init__()
         self.cfgs = cfgs
 
         # building first layer
@@ -144,16 +144,6 @@ class Vuvuzela(nn.Module):
 
 
 
-class Classifier(nn.Module):
-    def __init__(self, num_classes, cfgs):
-        super().__init__()
-        self.num_classes = num_classes
-        self.model = Vuvuzela(cfgs, num_classes)
-
-    def forward(self, x):
-        return self.model(x)
-
-
 
 """ [IMPORTANT]
 get_classifier function will be imported in evaluation file.
@@ -174,4 +164,4 @@ def get_classifier(num_classes=20):
         [6, 96, 4, 2, 1],
     ]
 
-    return Classifier(num_classes, cfgs)
+    return Classifier(cfgs, num_classes)
